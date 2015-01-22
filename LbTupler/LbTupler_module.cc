@@ -103,6 +103,7 @@ namespace LbTupler {
     std::string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
     std::string fHitProducerLabel;        // The name of the producer that created hits
     std::string fClusterProducerLabel;    // The name of the producer that created clusters
+    std::string fRawDigitLabel;           // The name of the producer that created the raw digits.
     int fSelectedPDG;                     // PDG code of particle we'll focus on
     double fBinSize;                      // For dE/dx work: the value of dx. 
 
@@ -305,6 +306,7 @@ namespace LbTupler {
     // to p.get<TYPE> must match names in the .fcl file.
     fdbg                     = p.get<int>        ("DebugLevel");
     fSimulationProducerLabel = p.get<std::string>("SimulationLabel");
+    fRawDigitLabel           = p.get<std::string>("RawDigitLabel");
     fHitProducerLabel        = p.get<std::string>("HitLabel");
     fClusterProducerLabel    = p.get<std::string>("ClusterLabel");
     fSelectedPDG             = p.get<int        >("PDGcode");
@@ -344,6 +346,11 @@ namespace LbTupler {
     if ( simChannelHandle->size() > fscCapacity ) {
       cout << myname << "WARNING: Sim channel count exceeds TTree capacity." << endl;
     }
+
+    // Get the raw digits for the event.
+    art::Handle< std::vector<raw::RawDigit> > rawDigitHandle;
+    event.getByLabel(fRawDigitLabel, rawDigitHandle);
+    if ( dbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
 
     // Loop over particles.
     for ( auto const& particle : (*particleHandle) ) {
