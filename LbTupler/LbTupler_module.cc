@@ -18,6 +18,7 @@
 #define LbTupler_Module
 
 #include <iostream>
+#include <iomanip>
 
 // LArSoft includes
 #include "Simulation/SimChannel.h"
@@ -60,6 +61,7 @@
 
 using std::cout;
 using std::endl;
+using std::setw;
 
 namespace LbTupler {
 
@@ -158,7 +160,8 @@ namespace LbTupler {
     std::vector<unsigned int> fscChannel;  // Readout channel number
     std::vector<float> fscEnergy;          // Energy summed over all TDCs
     std::vector<float> fscCharge;          // Charge summed over all TDCs
-    std::vector<int> fscTdc;               // TDC sample with largest energy for the channel.
+    std::vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
+    std::vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
     std::vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
     std::vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
     std::vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
@@ -194,6 +197,58 @@ namespace LbTupler {
     // histograms and n-tuples for us. 
     art::ServiceHandle<art::TFileService> tfs;
 
+    // Fetch geometry.
+    int ncryo = fGeometry->Ncryostats();
+    int ntpc = fGeometry->NTPC();
+    int ntpcchan = fGeometry->Nchannels();
+    std::vector<int> ntpcplane;
+    std::vector<int> ntpcplanewire;
+    std::vector<int> firsttpcplanewire;
+    firsttpcplanewire.push_back(0);
+    int icry = 0;
+    int itpcplane = 0;
+    // Loop over TPCs.
+    for ( int itpc =0; itpc<ntpc; ++itpc ) {
+      int nplane = fGeometry->Nplanes(itpc, icry);
+      ntpcplane.push_back(nplane);
+      // Loop over planes in the TPC.
+      for ( int ipla=0; ipla<nplane; ++ipla ) {
+        int nwire = fGeometry->Nwires(ipla, itpc, icry);
+        ntpcplanewire.push_back(nwire);
+        int firstwire = firsttpcplanewire[itpcplane];
+        int lastwire = firstwire + nwire - 1;
+        if ( itpc<ntpc-1 || ipla<nplane-1 ) {
+          firsttpcplanewire.push_back(lastwire + 1);
+        }
+        // Loop over wires and find the channels.
+        std::set<int> chans;
+        for ( int iwir=firstwire; iwir<=lastwire; ++iwir ) {
+          int icha = fGeometry->PlaneWireToChannel(ipla, iwir, itpc, icry);
+          chans.insert(icha);
+        }
+        int nchan = chans.size();
+        int firstchan = -1;
+        int lastchan = -1;
+        if ( nchan ) {
+          firstchan = *chans.cbegin();
+          lastchan = *chans.crbegin();
+        }
+        if ( fdbg > 0 ) {
+          cout << myname << "TPC " << itpc << ", plane " << ipla <<  " has " << nwire
+               << " wires: [" << setw(4) << firstwire << "," << setw(4) << lastwire << "]"
+               << " and " << nchan << "/" << lastchan - firstchan + 1 << " channels: ["
+               << setw(4) << firstchan << "," << setw(4) << lastchan << "]" << endl;
+        }
+        ++itpcplane;
+      }
+    }
+    if ( fdbg > 0 ) {
+      cout << myname << "        Total # cryostats: " << ncryo << endl;
+      cout << myname << "             Total # TPCs: " << ntpc << endl;
+      cout << myname << "     Total # TPC channels: " << ntpcchan << endl;
+      cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
+      cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
+    }
     double detLength = fGeometry->DetLength(); 
     double detWidth  = fGeometry->DetHalfWidth()  * 2.;
     double detHeight = fGeometry->DetHalfHeight() * 2.;
@@ -220,7 +275,8 @@ namespace LbTupler {
     fscChannel.reserve(fscCapacity);
     fscEnergy.reserve(fscCapacity);
     fscCharge.reserve(fscCapacity);
-    fscTdc.reserve(fscCapacity);
+    fscTdcPeak.reserve(fscCapacity);
+    fscTdcMean.reserve(fscCapacity);
     fscTdcEnergy.reserve(fscCapacity);
     fscTdcCharge.reserve(fscCapacity);
     fscTdcNide.reserve(fscCapacity);
@@ -284,7 +340,8 @@ namespace LbTupler {
     fSimChannelNtuple->Branch("chan", fscChannel.data(), "channnel[nchan]/i");
     fSimChannelNtuple->Branch("energy", fscEnergy.data(), "energy[nchan]/F");
     fSimChannelNtuple->Branch("charge", fscCharge.data(), "charge[nchan]/F");
-    fSimChannelNtuple->Branch("tdc", fscTdc.data(), "tdc[nchan]/I");
+    fSimChannelNtuple->Branch("tdcpeak", fscTdcPeak.data(), "tdcpeak[nchan]/I");
+    fSimChannelNtuple->Branch("tdcmean", fscTdcMean.data(), "tdcmean[nchan]/F");
     fSimChannelNtuple->Branch("tdcenergy", fscTdcEnergy.data(), "tdcenergy[nchan]/F");
     fSimChannelNtuple->Branch("tdccharge", fscTdcCharge.data(), "tdccharge[nchan]/F");
     fSimChannelNtuple->Branch("tdcnide",   fscTdcNide.data(),   "tdcnide[nchan]/i");
@@ -524,8 +581,9 @@ namespace LbTupler {
         auto const& idemap = chan.TDCIDEMap();
         double energy = 0.0;  // Total energy in the channel
         double charge = 0.0;  // Total charge in the channel
+        double energytdc = 0.0;  // Total energy*tdc in the channel
         // Loop over TDC samples.
-        short tdcMax = 0;     // TDC sample with the largest energy for this channel
+        short tdcPeak = 0;     // TDC sample with the largest energy for this channel
         double tdcEnergyMax = 0.0;  // Energy for that TDC
         double tdcChargeMax = 0.0;  // Charge for that TDC
         unsigned int tdcNideMax = 0.0;  // Charge for that TDC
@@ -540,20 +598,22 @@ namespace LbTupler {
             tdcEnergy += ide.energy;
             tdcCharge += ide.numElectrons;
           }
-          if ( tdcMax == 0 || tdcEnergy > tdcEnergyMax ) {
-            tdcMax = tdc;
+          if ( tdcPeak == 0 || tdcEnergy > tdcEnergyMax ) {
+            tdcPeak = tdc;
             tdcEnergyMax = tdcEnergy;
             tdcChargeMax = tdcCharge;
             tdcNideMax = tdcNide;
           }
           energy += tdcEnergy;
           charge += tdcCharge;
+          energytdc += tdcEnergy*tdc;
         }
         if ( dbg > 3 ) cout << myname << "  Deposited energy, charge: "
           << energy << ", " << charge << endl;
         fscEnergy[fscCount] = energy;
         fscCharge[fscCount] = charge;
-        fscTdc[fscCount] = tdcMax;
+        fscTdcPeak[fscCount] = tdcPeak;
+        fscTdcMean[fscCount] = energytdc/energy;
         fscTdcEnergy[fscCount] = tdcEnergyMax;
         fscTdcCharge[fscCount] = tdcChargeMax;
         fscTdcNide[fscCount] = tdcNideMax;
