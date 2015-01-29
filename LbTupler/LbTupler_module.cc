@@ -158,7 +158,7 @@ namespace LbTupler {
     std::vector<unsigned int> fscChannel;  // Readout channel number
     std::vector<float> fscEnergy;          // Energy summed over all TDCs
     std::vector<float> fscCharge;          // Charge summed over all TDCs
-    std::vector<float> fscTdc;             // TDC sample with largest energy for the channel.
+    std::vector<int> fscTdc;               // TDC sample with largest energy for the channel.
     std::vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
     std::vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
     std::vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
