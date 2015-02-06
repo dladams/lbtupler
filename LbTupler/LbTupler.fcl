@@ -128,6 +128,10 @@ physics:
       # Max number of sim channels.
       SimChannelSize:     10000
 
+      # TDC range for histograms.
+      TdcTickMin:      0
+      TdcTickMax:   3200
+
     }
   }
 

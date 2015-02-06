@@ -19,6 +19,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 
 // LArSoft includes
 #include "Simulation/SimChannel.h"
@@ -26,6 +27,7 @@
 #include "RecoBase/Hit.h"
 #include "RecoBase/Cluster.h"
 #include "Geometry/Geometry.h"
+#include "HitFinderLBNE/APAGeometryAlg.h"
 #include "SimulationBase/MCParticle.h"
 #include "SimulationBase/MCTruth.h"
 #include "SimpleTypesAndConstants/geo_types.h"
@@ -61,7 +63,12 @@
 
 using std::cout;
 using std::endl;
+using std::ostringstream;
 using std::setw;
+using std::string;
+using std::vector;
+using std::set;
+using std::sqrt;
 
 namespace LbTupler {
 
@@ -102,10 +109,10 @@ namespace LbTupler {
 
     // The parameters we'll read from the .fcl file.
     int fdbg;                             // Debug level. Larger for more log noise.
-    std::string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
-    std::string fHitProducerLabel;        // The name of the producer that created hits
-    std::string fClusterProducerLabel;    // The name of the producer that created clusters
-    std::string fRawDigitLabel;           // The name of the producer that created the raw digits.
+    string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
+    string fHitProducerLabel;        // The name of the producer that created hits
+    string fClusterProducerLabel;    // The name of the producer that created clusters
+    string fRawDigitLabel;           // The name of the producer that created the raw digits.
     int fSelectedPDG;                     // PDG code of particle we'll focus on
     double fBinSize;                      // For dE/dx work: the value of dx. 
 
@@ -120,7 +127,7 @@ namespace LbTupler {
     TTree* fSimChannelNtuple;
 
     // The variables that will go into the n-tuple.
-    int fEvent;
+    int fevent;
     int fRun;
     int fSubRun;
     int fPDG;
@@ -142,7 +149,7 @@ namespace LbTupler {
     // Number of dE/dx bins in a given track. 
     int fndedxBins;
     // The vector that will be used to accumulate dE/dx values.
-    std::vector<double> fdedxBins;
+    vector<double> fdedxBins;
 
     // Other variables that will be shared between different methods.
     double                            fElectronsToGeV; // conversion factor
@@ -157,17 +164,36 @@ namespace LbTupler {
     // Sim channel info.
     unsigned int fscCapacity;
     unsigned int fscCount;
-    std::vector<unsigned int> fscChannel;  // Readout channel number
-    std::vector<float> fscEnergy;          // Energy summed over all TDCs
-    std::vector<float> fscCharge;          // Charge summed over all TDCs
-    std::vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
-    std::vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
-    std::vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
-    std::vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
-    std::vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
+    unsigned int ftdcTickMin;         // First TDC bin to draw.
+    unsigned int ftdcTickMax;         // Last+1 TDC bin to draw.
+    vector<unsigned int> fscChannel;  // Readout channel number
+    vector<float> fscEnergy;          // Energy summed over all TDCs
+    vector<float> fscCharge;          // Charge summed over all TDCs
+    vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
+    vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
+    vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
+    vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
+    vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
 
     // Geometry service.
     art::ServiceHandle<geo::Geometry> fGeometry;       // pointer to Geometry service
+
+    // Geometry information.
+    unsigned int fncryo;         // # cryostats
+    unsigned int fntpc;          // # TPC
+    unsigned int fntpp;          // Total # TPC planes
+    vector<int> fntpcplane;      // # planes in each TPC
+    vector<int> fntpcplanewire;  // # wires in each plane
+    vector<string> ftpcname;     // Names for the TPCs.
+    vector<string> fplanename;   // Names for the TPC planes.
+    unsigned int fnrop;          // Total # readout planes (ROPs)
+    vector<int> fropfirstchan;   // first channel for each readout plane
+    vector<int> fropnchan;       // # channels for each readout plane
+    vector<int> froptpc;         // First TPC for each readout plane
+    vector<string> fropname;     // Names for the TPC readout planes, e.g. rop1x1.
+    unsigned int fnapa;          // Total # APA
+    vector<int> fapanrop;        // # ROP for each APA.
+
 
   }; // class LbTupler
 
@@ -191,38 +217,46 @@ namespace LbTupler {
    
   //-----------------------------------------------------------------------
   void LbTupler::beginJob() {
-    const std::string myname = "LbTupler::beginJob: ";
+    const string myname = "LbTupler::beginJob: ";
 
     // Access ART's TFileService, which will handle creating and writing
     // histograms and n-tuples for us. 
     art::ServiceHandle<art::TFileService> tfs;
 
     // Fetch geometry.
-    int ncryo = fGeometry->Ncryostats();
-    int ntpc = fGeometry->NTPC();
+    fncryo = fGeometry->Ncryostats();
+    fntpc = fGeometry->NTPC();
     int ntpcchan = fGeometry->Nchannels();
-    std::vector<int> ntpcplane;
-    std::vector<int> ntpcplanewire;
-    std::vector<int> firsttpcplanewire;
+    vector<int> firsttpcplanewire;
     firsttpcplanewire.push_back(0);
     int icry = 0;
-    int itpcplane = 0;
+    fntpp = 0;
     // Loop over TPCs.
-    for ( int itpc =0; itpc<ntpc; ++itpc ) {
+    for ( unsigned int itpc =0; itpc<fntpc; ++itpc ) {
       int nplane = fGeometry->Nplanes(itpc, icry);
-      ntpcplane.push_back(nplane);
+      ostringstream sstpc;
+      sstpc << "TPC" << itpc;
+      string tpcname = sstpc.str();
+      fntpcplane.push_back(nplane);
+      ftpcname.push_back(tpcname);
+      int itdcrop = 0;   // # readouts for this TDC
       // Loop over planes in the TPC.
       for ( int ipla=0; ipla<nplane; ++ipla ) {
         int nwire = fGeometry->Nwires(ipla, itpc, icry);
-        ntpcplanewire.push_back(nwire);
-        int firstwire = firsttpcplanewire[itpcplane];
+        fntpcplanewire.push_back(nwire);
+        ostringstream ssplane;
+        ssplane << tpcname << "Plane" << ipla;
+        string planename = ssplane.str();
+        fplanename.push_back(planename);
+        int firstwire = firsttpcplanewire[fntpp];
         int lastwire = firstwire + nwire - 1;
-        if ( itpc<ntpc-1 || ipla<nplane-1 ) {
+        if ( itpc<fntpc-1 || ipla<nplane-1 ) {
           firsttpcplanewire.push_back(lastwire + 1);
         }
         // Loop over wires and find the channels.
-        std::set<int> chans;
-        for ( int iwir=firstwire; iwir<=lastwire; ++iwir ) {
+        set<int> chans;
+        //for ( int iwir=firstwire; iwir<=lastwire; ++iwir ) {
+        for ( int iwir=0; iwir<nwire; ++iwir ) {
           int icha = fGeometry->PlaneWireToChannel(ipla, iwir, itpc, icry);
           chans.insert(icha);
         }
@@ -233,31 +267,104 @@ namespace LbTupler {
           firstchan = *chans.cbegin();
           lastchan = *chans.crbegin();
         }
+        if ( lastchan <= firstchan ) {
+          cout << myname << "ERROR: Invalid channel range." << endl;
+          abort();
+        }
         if ( fdbg > 0 ) {
-          cout << myname << "TPC " << itpc << ", plane " << ipla <<  " has " << nwire
+          if ( fntpp == 0 ) cout << myname << "TPC wires:" << endl;
+          cout << myname << planename <<  " has " << nwire
                << " wires: [" << setw(4) << firstwire << "," << setw(4) << lastwire << "]"
                << " and " << nchan << "/" << lastchan - firstchan + 1 << " channels: ["
                << setw(4) << firstchan << "," << setw(4) << lastchan << "]" << endl;
         }
-        ++itpcplane;
+        // Check if the range for the current readout plane (ROP) is already covered.
+        unsigned int irop = fnrop;
+        for ( irop=0; irop<fnrop; ++irop ) {
+          int ropfirst = fropfirstchan[irop];
+          int roplast = ropfirst + fropnchan[irop] - 1;
+          if ( firstchan > roplast ) continue;               // New range is after the ROP
+          if ( lastchan < ropfirst ) continue;               // New range is before the ROP
+          if ( firstchan==ropfirst && lastchan==roplast ) break;  // Exact match
+          // We could extend the range here but current geometry does not require this.
+          cout << myname << "ERROR: Invalid channel range overlap." << endl;
+          abort();
+        }
+        // If this is a new ROP, then record its channel range and TPC, and assign it to
+        // an APA. For now, the latter assumes APA ordering follows TPC and is
+cout << 0 << endl;
+        if ( irop == fnrop ) {  // We have a new readout plane.
+cout << 1 << endl;
+          unsigned int iapa = irop/2;
+          for ( unsigned int japa=fnapa; japa<=iapa; ++japa ) {
+            fapanrop.push_back(0);
+            ++fnapa;
+          }
+          ++fapanrop[iapa];
+          fropfirstchan.push_back(firstchan);
+          fropnchan.push_back(lastchan - firstchan + 1 );
+          froptpc.push_back(itpc);
+          ostringstream ssrop;
+          const vector<string> pnames = {"u", "v", "x1", "x2", "a", "b", "c", "d", "e"};
+          ssrop << "apa" << iapa << pnames[fapanrop[iapa]-1];
+          fropname.push_back(ssrop.str());
+          ++fnrop;
+          ++itdcrop;
+cout << 19 << endl;
+        }
+        ++fntpp;
       }
     }
+cout << 2 << endl;
     if ( fdbg > 0 ) {
-      cout << myname << "        Total # cryostats: " << ncryo << endl;
-      cout << myname << "             Total # TPCs: " << ntpc << endl;
+      cout << myname << "        Total # cryostats: " << fncryo << endl;
+      cout << myname << "             Total # TPCs: " << fntpc << endl;
       cout << myname << "     Total # TPC channels: " << ntpcchan << endl;
       cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
       cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
+      cout << myname << "There are " << fnrop << " ROPs (readout planes):" << endl;
+      cout << myname << "      name     first chan        #chan" << endl;
+cout << 3 << endl;
+      for ( unsigned int irop=0; irop<fnrop; ++irop ) {
+cout << 4 << endl;
+        cout << myname << setw(10) << fropname[irop] << setw(15) << fropfirstchan[irop]
+             << setw(15) << fropnchan[irop] << endl;
+      }
     }
     double detLength = fGeometry->DetLength(); 
     double detWidth  = fGeometry->DetHalfWidth()  * 2.;
     double detHeight = fGeometry->DetHalfHeight() * 2.;
     if ( fdbg > 0 ) {
-      cout << myname << "Detector length: " << detLength << endl;
-      cout << myname << "Detector width:  " << detWidth  << endl;
-      cout << myname << "Detector height: " << detHeight << endl;
+      cout << myname << "Detector length: " << detLength << " cm" << endl;
+      cout << myname << "Detector width:  " << detWidth  << " cm" << endl;
+      cout << myname << "Detector height: " << detHeight << " cm" << endl;
     }
-    double detSize = std::sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
+    double detSize = sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
+
+    // Geometry dump from Michelle.
+    if ( fdbg > 3 ) {
+      double xyz[3];                                                                                                                                   
+      double abc[3];                                                                 
+      int chan;
+      int cryo = fGeometry->Ncryostats();                                                             
+      for (int c=0; c<cryo;++c){                   
+        int tpc =fGeometry->NTPC(c);                                               
+        for (int t=0; t<tpc; ++t){                                            
+          int Nplanes=fGeometry->Nplanes(t,c);                                      
+          for (int p=0;p<Nplanes;++p) {                                        
+            int Nwires = fGeometry->Nwires(p,t,c);                                  
+            cout << "FLAG " << endl;
+            for (int w=0;w<Nwires;++w){
+              fGeometry->WireEndPoints(c,t,p,w,xyz,abc);
+              chan=fGeometry->PlaneWireToChannel(p,w,t,c);  
+              cout << "FLAG " << setw(4) << chan << " " << c << " " << t << " " << p << setw(4) << w << " "
+                        << xyz[0] << " " << xyz[1] << " " << xyz[2] <<  " "
+                        << abc[0] << " " << abc[1] << " " << abc[2] << endl;                                         
+            }
+          }
+        }
+      }
+    }
 
     // Set up the vector that will be used to accumulate the dE/dx
     // values into bins. We want the capacity of this vector to be big
@@ -292,12 +399,12 @@ namespace LbTupler {
     // TTrees. Start with the TTree itself.
     fSimulationNtuple     = tfs->make<TTree>("LbTuplerSimulation",    "LbTuplerSimulation");
     fReconstructionNtuple = tfs->make<TTree>("LbTuplerReconstruction","LbTuplerReconstruction");
-    fSimChannelNtuple = tfs->make<TTree>("LbTuplerSimChannel","LbTuplerSimChannel");
+    fSimChannelNtuple     = tfs->make<TTree>("LbTuplerSimChannel","LbTuplerSimChannel");
 
     // Define the branches (columns) of our simulation n-tuple. When
     // we write a variable, we give the address of the variable to
     // TTree::Branch.
-    fSimulationNtuple->Branch("event",       &fEvent,          "event/I");
+    fSimulationNtuple->Branch("event",       &fevent,          "event/I");
     fSimulationNtuple->Branch("subrun",      &fSubRun,         "subrun/I");
     fSimulationNtuple->Branch("run",         &fRun,            "run/I");
     fSimulationNtuple->Branch("trackid",     &ftrackid,        "trackid/I");
@@ -324,7 +431,7 @@ namespace LbTupler {
 
     // A similar definition for the reconstruction n-tuple. Note that we
     // use some of the same variables in both n-tuples.
-    fReconstructionNtuple->Branch("Event",   &fEvent,          "Event/I");
+    fReconstructionNtuple->Branch("Event",   &fevent,          "Event/I");
     fReconstructionNtuple->Branch("SubRun",  &fSubRun,         "SubRun/I");
     fReconstructionNtuple->Branch("Run",     &fRun,            "Run/I");
     fReconstructionNtuple->Branch("TrackID", &ftrackid,        "TrackID/I");
@@ -333,7 +440,7 @@ namespace LbTupler {
     fReconstructionNtuple->Branch("dedx",    fdedxBins.data(), "dedx[ndedx]/D");
 
     // Sim channel tree.
-    fSimChannelNtuple->Branch("event",   &fEvent,          "event/I");
+    fSimChannelNtuple->Branch("event",   &fevent,          "event/I");
     fSimChannelNtuple->Branch("subrun",  &fSubRun,         "subrun/I");
     fSimChannelNtuple->Branch("run",     &fRun,            "run/I");
     fSimChannelNtuple->Branch("nchan", &fscCount, "nchan/i");
@@ -362,34 +469,40 @@ namespace LbTupler {
     // Read parameters from the .fcl file. The names in the arguments
     // to p.get<TYPE> must match names in the .fcl file.
     fdbg                     = p.get<int>        ("DebugLevel");
-    fSimulationProducerLabel = p.get<std::string>("SimulationLabel");
-    fRawDigitLabel           = p.get<std::string>("RawDigitLabel");
-    fHitProducerLabel        = p.get<std::string>("HitLabel");
-    fClusterProducerLabel    = p.get<std::string>("ClusterLabel");
-    fSelectedPDG             = p.get<int        >("PDGcode");
-    fBinSize                 = p.get<double     >("BinSize");
-    fscCapacity              = p.get<double     >("SimChannelSize");
+    fSimulationProducerLabel = p.get<string>("SimulationLabel");
+    fRawDigitLabel           = p.get<string>("RawDigitLabel");
+    fHitProducerLabel        = p.get<string>("HitLabel");
+    fClusterProducerLabel    = p.get<string>("ClusterLabel");
+    fSelectedPDG             = p.get<int>("PDGcode");
+    fBinSize                 = p.get<double>("BinSize");
+    fscCapacity              = p.get<double>("SimChannelSize");
+    ftdcTickMin              = p.get<int>("TdcTickMin");
+    ftdcTickMax              = p.get<int>("TdcTickMax");
     return;
   }
 
   //-----------------------------------------------------------------------
   void LbTupler::analyze(const art::Event& event) 
   {
+    // Access ART's TFileService, which will handle creating and writing
+    // histograms and n-tuples for us. 
+    art::ServiceHandle<art::TFileService> tfs;
+
     int dbg = fdbg;
-    const std::string myname = "LbTupler::analyze: ";
+    const string myname = "LbTupler::analyze: ";
     // Start by fetching some basic event information for our n-tuple.
-    fEvent  = event.id().event(); 
+    fevent  = event.id().event(); 
     fRun    = event.run();
     fSubRun = event.subRun();
     if ( dbg > 0 ) cout << myname << "Processing run " << fRun << "-" << fSubRun
-         << ", event " << fEvent << endl;
+         << ", event " << fevent << endl;
 
     // This is the standard method of reading multiple objects
     // associated with the same event; see
     // <https://cdcvs.fnal.gov/redmine/projects/larsoftsvn/wiki/Using_the_Framework>
     // for more information. Define a "handle" to point to a vector of
     // the objects.
-    art::Handle< std::vector<simb::MCParticle> > particleHandle;
+    art::Handle< vector<simb::MCParticle> > particleHandle;
     // Then tell the event to fill the vector with all the objects of
     // that type produced by a particular producer.
     event.getByLabel(fSimulationProducerLabel, particleHandle);
@@ -397,7 +510,7 @@ namespace LbTupler {
 
     // Get all the simulated channels for the event. These channels
     // include the energy deposited for each track.
-    art::Handle< std::vector<sim::SimChannel> > simChannelHandle;
+    art::Handle< vector<sim::SimChannel> > simChannelHandle;
     event.getByLabel(fSimulationProducerLabel, simChannelHandle);
     if ( dbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
     if ( simChannelHandle->size() > fscCapacity ) {
@@ -405,7 +518,7 @@ namespace LbTupler {
     }
 
     // Get the raw digits for the event.
-    art::Handle< std::vector<raw::RawDigit> > rawDigitHandle;
+    art::Handle< vector<raw::RawDigit> > rawDigitHandle;
     event.getByLabel(fRawDigitLabel, rawDigitHandle);
     if ( dbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
 
@@ -497,13 +610,14 @@ namespace LbTupler {
           // include the energy from the collection plane.
           // (geo::kCollection is defined in
           // ${LARSIM_DIR}/include/SimpleTypesAndConstants/geo_types.h)
+          // DLA: I include all planes.
           if ( true ) {
           //dla if ( fGeometry->SignalType( channelNumber ) == geo::kCollection ) {
             // Each channel has a map inside it that connects
             // a time slice to energy deposits in the
             // detector.  We'll use "auto", but it's worth
             // noting that the full type of this map is
-            // std::map<unsigned short, std::vector<sim::IDE>>;
+            // map<unsigned short, vector<sim::IDE>>;
             auto const& timeSlices = channel.TDCIDEMap();
 
             // For every time slice in this channel:
@@ -568,6 +682,25 @@ namespace LbTupler {
       } // if selected
     } // end loop over all particles in the event. 
 
+    // Create sim plane histograms.
+    vector<TH2*> sphists;
+    ostringstream ssevt;
+    ssevt << fevent;
+    string sevt = ssevt.str();
+    while ( sevt.size() < 4 ) sevt = "0" + sevt;
+    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
+      int nchan = fropnchan[irop];
+      int ntick = ftdcTickMax-ftdcTickMin;
+      string hname = "h" + sevt + "sim" + fropname[irop];
+      string title = fropname[irop] + ";TDC tick;Channel;Energy [MeV]";
+      if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
+                          << " TDC bins " << " and " << nchan << " channel bins" << endl;
+      TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
+                                ntick, ftdcTickMin, ftdcTickMax,
+                                nchan, 0, nchan);
+      sphists.push_back(ph);
+    }
+
     // Loop over the SimChannel objects in the event.
     fscCount = 0;
     for ( auto& val : fscChannel ) val = 0;
@@ -575,7 +708,21 @@ namespace LbTupler {
     for ( auto& val : fscEnergy ) val = 0.0;
     for ( auto const& chan : (*simChannelHandle) ) {
       auto ichan = chan.Channel();
-      if ( dbg > 3 ) cout << myname << " " << fscCount << ": Sim channel: " << ichan << endl;
+      // Find the channel number in the ROP.
+      unsigned int irop = fnrop;
+      for ( irop=0; irop<fnrop; ++irop ) {
+        unsigned int lastchan = fropfirstchan[irop] + fropnchan[irop] - 1;
+        if ( ichan <= lastchan ) break;
+      }
+      if ( irop == fnrop ) {
+        cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
+        abort();
+      }
+      int iropchan = ichan - fropfirstchan[ichan];
+      // Fetch the histogram for the current ROP.
+      TH2* psphist = sphists[irop];
+      if ( dbg > 3 ) cout << myname << " " << fscCount << ": Sim channel=" << ichan
+                          << ", ROP=" << irop << ", ROP channel=" << iropchan << endl;
       if ( fscCount < fscCapacity ) {
         fscChannel[fscCount] = ichan;
         auto const& idemap = chan.TDCIDEMap();
@@ -598,15 +745,19 @@ namespace LbTupler {
             tdcEnergy += ide.energy;
             tdcCharge += ide.numElectrons;
           }
+          // Update the peak channel data.
           if ( tdcPeak == 0 || tdcEnergy > tdcEnergyMax ) {
             tdcPeak = tdc;
             tdcEnergyMax = tdcEnergy;
             tdcChargeMax = tdcCharge;
             tdcNideMax = tdcNide;
           }
+          // Increment the sums for this channel.
           energy += tdcEnergy;
           charge += tdcCharge;
           energytdc += tdcEnergy*tdc;
+          // Fill the histogram.
+          psphist->Fill(tdc, iropchan, energy);
         }
         if ( dbg > 3 ) cout << myname << "  Deposited energy, charge: "
           << energy << ", " << charge << endl;
