@@ -27,7 +27,7 @@
 #include "RecoBase/Hit.h"
 #include "RecoBase/Cluster.h"
 #include "Geometry/Geometry.h"
-#include "HitFinderLBNE/APAGeometryAlg.h"
+//#include "HitFinderLBNE/APAGeometryAlg.h"
 #include "SimulationBase/MCParticle.h"
 #include "SimulationBase/MCTruth.h"
 #include "SimpleTypesAndConstants/geo_types.h"
@@ -292,10 +292,8 @@ namespace LbTupler {
         }
         // If this is a new ROP, then record its channel range and TPC, and assign it to
         // an APA. For now, the latter assumes APA ordering follows TPC and is
-cout << 0 << endl;
         if ( irop == fnrop ) {  // We have a new readout plane.
-cout << 1 << endl;
-          unsigned int iapa = irop/2;
+          unsigned int iapa = itpc/2;
           for ( unsigned int japa=fnapa; japa<=iapa; ++japa ) {
             fapanrop.push_back(0);
             ++fnapa;
@@ -310,12 +308,10 @@ cout << 1 << endl;
           fropname.push_back(ssrop.str());
           ++fnrop;
           ++itdcrop;
-cout << 19 << endl;
         }
         ++fntpp;
       }
     }
-cout << 2 << endl;
     if ( fdbg > 0 ) {
       cout << myname << "        Total # cryostats: " << fncryo << endl;
       cout << myname << "             Total # TPCs: " << fntpc << endl;
@@ -323,11 +319,9 @@ cout << 2 << endl;
       cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
       cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
       cout << myname << "There are " << fnrop << " ROPs (readout planes):" << endl;
-      cout << myname << "      name     first chan        #chan" << endl;
-cout << 3 << endl;
+      cout << myname << "      name     first chan     #chan" << endl;
       for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-cout << 4 << endl;
-        cout << myname << setw(10) << fropname[irop] << setw(15) << fropfirstchan[irop]
+        cout << myname << setw(10) << fropname[irop] << setw(10) << fropfirstchan[irop]
              << setw(15) << fropnchan[irop] << endl;
       }
     }
@@ -718,7 +712,12 @@ cout << 4 << endl;
         cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
         abort();
       }
-      int iropchan = ichan - fropfirstchan[ichan];
+      int iropchan = ichan - fropfirstchan[irop];
+      if ( iropchan < 0 || iropchan >= fropnchan[irop] ) {
+        cout << myname << "ERROR: ROP channel " << iropchan << " is out of range [0, "
+             << fropnchan[irop] << ")" << endl;
+        abort();
+      }
       // Fetch the histogram for the current ROP.
       TH2* psphist = sphists[irop];
       if ( dbg > 3 ) cout << myname << " " << fscCount << ": Sim channel=" << ichan
@@ -758,6 +757,9 @@ cout << 4 << endl;
           energytdc += tdcEnergy*tdc;
           // Fill the histogram.
           psphist->Fill(tdc, iropchan, energy);
+          if ( dbg > 3 ) cout << myname << "Sim/ROP channel " << ichan << "/" << iropchan
+                              << ", tdc " << tdc
+                              << " has " << int(100.0*tdcEnergy+0.4999)/100.0 << " MeV" << endl;
         }
         if ( dbg > 3 ) cout << myname << "  Deposited energy, charge: "
           << energy << ", " << charge << endl;
@@ -770,7 +772,7 @@ cout << 4 << endl;
         fscTdcNide[fscCount] = tdcNideMax;
         ++fscCount;
       } else {
-        if ( dbg > 3 ) cout << myname << "Sim channel: " << ichan << endl;
+        cout << myname << "WARNING: Skipping sim channel " << ichan << endl;
       }
     } // end loop over sim channels in the event. 
     fSimChannelNtuple->Fill();

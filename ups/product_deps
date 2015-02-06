@@ -6,6 +6,7 @@ defaultqual	e6
 fcldir product_dir job
 #
 product         version
+lbnecode	v03_07_00
 larsim		v03_05_00
 gcc		v4_9_1
 
@@ -14,10 +15,10 @@ end_product_list
 
   
 # e6  - with gcc 4.9.1 and -std=c++1y
-qualifier	larsim		gcc	notes
-e6:debug	e6:debug	-nq-
-e6:opt		e6:opt		-nq-
-e6:prof		e6:prof		-nq-
+qualifier	lbnecode	larsim		gcc	notes
+e6:debug	e6:debug	e6:debug	-nq-
+e6:opt		e6:opt	e6:opt		-nq-
+e6:prof		e6:prof	e6:prof		-nq-
 end_qualifier_list
 
 # Preserve tabs and formatting in emacs and vi / vim:

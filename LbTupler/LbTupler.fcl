@@ -90,7 +90,7 @@ physics:
       module_type:     "LbTupler"
 
       # Debug level: 0 for silent, 5 for very noisy
-      DebugLevel:   2
+      DebugLevel:   4
 
       # The input parameters for our LbTupler module. Compare
       # the names you see here with the reconfigure method in
