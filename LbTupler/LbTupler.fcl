@@ -108,7 +108,11 @@ physics:
       # Hits can be created by more than one module in
       # ${LARRECO_DIR}/source/HitFinder. For this example, I picked
       # the one that's usually run first.
-      HitLabel:        "gaushit"
+      #HitLabel:        "gaushit"
+      HitLabel:         "hitcheat"
+
+      # Wire container.
+      WireLabel:        "caldata"
 
       # The same for clusters:
       ClusterLabel:    "fuzzycluster"
@@ -130,8 +134,25 @@ physics:
 
       # TDC range for histograms.
       TdcTickMin:      0
-      TdcTickMax:   3200
+      TdcTickMax:   2800
 
+      # Maximum step size [cm] for filling the MC Particle trajector histograms
+      McParticleDsMax: 0.05
+
+      # ADC count to MeV energy deposit conversion factors.
+      # From Michelle
+      #AdcToMeVConversionU:  0.014976
+      #AdcToMeVConversionV:  0.016616
+      #AdcToMeVConversionX:  0.032766
+      AdcToMeVConversionU:  0.00382
+      AdcToMeVConversionV:  0.00382
+      AdcToMeVConversionX:  0.00180
+
+      # Range for energy deposit [MeV] in histograms.
+      HistDEMax:  1.0
+
+      # If raw and wire histograms should be converted to energy.
+      HistUseDE:  true
     }
   }
 

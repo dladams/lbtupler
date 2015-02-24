@@ -2,6 +2,10 @@
 simple_plugin(LbTupler "module"
 			Geometry_service
                         Geometry
+                        LArProperties_service
+                        DetectorProperties_service
+                        RawData
+                        RecoBase
                         ${SIMULATIONBASE}
                         ${ART_FRAMEWORK_CORE}
 			${ART_FRAMEWORK_PRINCIPAL}
