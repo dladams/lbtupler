@@ -121,6 +121,8 @@ namespace LbTupler {
 
     // The parameters we'll read from the .fcl file.
     int fdbg;                             // Debug level. Larger for more log noise.
+    string fTruthProducerLabel;      // The name of the producer that tracked simulated particles through the detector
+    string fParticleProducerLabel;   // The name of the producer that tracked simulated particles through the detector
     string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
     string fHitProducerLabel;        // The name of the producer that created hits
     string fWireProducerLabel;       // The name of the producer that created wires
@@ -507,6 +509,8 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
   // Read parameters from the .fcl file. The names in the arguments
   // to p.get<TYPE> must match names in the .fcl file.
   fdbg                     = p.get<int>        ("DebugLevel");
+  fTruthProducerLabel      = p.get<string>("TruthLabel");
+  fParticleProducerLabel   = p.get<string>("ParticleLabel");
   fSimulationProducerLabel = p.get<string>("SimulationLabel");
   fRawDigitLabel           = p.get<string>("RawDigitLabel");
   fHitProducerLabel        = p.get<string>("HitLabel");
@@ -547,10 +551,18 @@ void LbTupler::analyze(const art::Event& event) {
   // <https://cdcvs.fnal.gov/redmine/projects/larsoftsvn/wiki/Using_the_Framework>
   // for more information. Define a "handle" to point to a vector of
   // the objects.
-  art::Handle< vector<simb::MCParticle> > particleHandle;
   // Then tell the event to fill the vector with all the objects of
   // that type produced by a particular producer.
-  event.getByLabel(fSimulationProducerLabel, particleHandle);
+
+  // Get the MC Truth for the event.
+  // See $NUTOOLS_DIR/include/SimulationBase/MCTruth.h
+  art::Handle< vector<simb::MCTruth> > truthHandle;
+  event.getByLabel(fTruthProducerLabel, truthHandle);
+  if ( dbg > 1 ) cout << myname << "Truth count: " << truthHandle->size() << endl;
+
+  // Get all the MC particles for the event.
+  art::Handle< vector<simb::MCParticle> > particleHandle;
+  event.getByLabel(fParticleProducerLabel, particleHandle);
   if ( dbg > 1 ) cout << myname << "Particle count: " << particleHandle->size() << endl;
 
   // Get all the simulated channels for the event. These channels
@@ -567,17 +579,17 @@ void LbTupler::analyze(const art::Event& event) {
   event.getByLabel(fRawDigitLabel, rawDigitHandle);
   if ( dbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
 
-  // Get the hits for the event.
-  // See $LARDATA_DIR/include/RecoBase/Hit.h
-  art::Handle< vector<recob::Hit> > hitsHandle;
-  event.getByLabel(fHitProducerLabel, hitsHandle);
-  if ( dbg > 1 ) cout << myname << "Hit count: " << hitsHandle->size() << endl;
-
   // Get the wires for the event.
   // See $LARDATA_DIR/include/RecoBase/Wire.h
   art::Handle< vector<recob::Wire> > wiresHandle;
   event.getByLabel(fWireProducerLabel, wiresHandle);
   if ( dbg > 1 ) cout << myname << "Wire count: " << wiresHandle->size() << endl;
+
+  // Get the hits for the event.
+  // See $LARDATA_DIR/include/RecoBase/Hit.h
+  art::Handle< vector<recob::Hit> > hitsHandle;
+  event.getByLabel(fHitProducerLabel, hitsHandle);
+  if ( dbg > 1 ) cout << myname << "Hit count: " << hitsHandle->size() << endl;
 
   // Create string representation of the event number.
   ostringstream ssevt;
@@ -1014,10 +1026,10 @@ void LbTupler::analyze(const art::Event& event) {
   for ( unsigned int irop=0; irop<fnrop; ++irop ) {
     int nchan = fropnchan[irop];
     int ntick = ftdcTickMax-ftdcTickMin;
-    string hname = "h" + sevtf + "wire" + fropname[irop];
+    string hname = "h" + sevtf + "wir" + fropname[irop];
     string title = "Wire signals for TPC plane " + fropname[irop] + " event " + sevt
                    + ";TDC tick;Channel;" + ztitle;
-    if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
+    if ( dbg > 1 ) cout << myname << "Creating wire histo " << hname << " with " << ntick
                         << " TDC bins " << " and " << nchan << " channel bins" << endl;
     TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                               ntick, ftdcTickMin, ftdcTickMax,
@@ -1049,7 +1061,46 @@ void LbTupler::analyze(const art::Event& event) {
     }
   }
 
-  // Create the Raw digit histograms.
+  //************************************************************************
+  // Hits.
+  //************************************************************************
+
+  // Create the hit histograms.
+  vector<TH2*> hithists;
+  for ( unsigned int irop=0; irop<fnrop; ++irop ) {
+    int nchan = fropnchan[irop];
+    int ntick = ftdcTickMax-ftdcTickMin;
+    string hname = "h" + sevtf + "hit" + fropname[irop];
+    string title = "Hits for TPC plane " + fropname[irop] + " event " + sevt
+                   + ";TDC tick;Channel;" + ztitle;
+    if ( dbg > 1 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
+                        << " TDC bins " << " and " << nchan << " channel bins" << endl;
+    TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
+                              ntick, ftdcTickMin, ftdcTickMax,
+                              nchan, 0, nchan);
+    ph->GetZaxis()->SetRangeUser(-zmax, zmax);
+    ph->SetContour(ncontour);
+    ph->SetStats(0);
+    hithists.push_back(ph);
+  }
+
+  for ( auto const& hit : (*hitsHandle) ) {
+    int ichan = hit.Channel();
+    unsigned int irop = channelRop(ichan);
+    unsigned int iropchan = ichan - fropfirstchan[irop];
+    TH2* ph = hithists[irop];
+    if ( dbg > 3 ) cout << myname << "Hit channel " << ichan
+                        << " (ROP-chan = " << irop << "-" << iropchan << ")"
+                        << " with view " << hit.View()
+                        << " has charge " << hit.Charge() 
+                        << " at TDC " << hit.PeakTime()
+                        << "." << endl;
+    double wt = hit.Charge();
+    if ( wt == 0 ) continue;
+    if ( fhistusede ) wt *= adc2de(ichan);
+    ph->Fill(hit.PeakTime(), hit.Channel(), wt);
+  }
+
   return;
 }
 

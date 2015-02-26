@@ -97,6 +97,13 @@ physics:
       # LbTupler.cxx. You will want to add/remove/rename the
       # example parameters below to suit your task.
       #
+
+      # Truth container.
+      TruthLabel:      "generator"
+
+      # MCParticle container.
+      ParticleLabel:      "largeant"
+
       # If you are reading any objects created by the simulation, then
       # don't change the value of this parameter. This is the name of
       # the 'producer' that ran the simulation module in a previous
