@@ -1,18 +1,7 @@
 // LbTupler_module.cc
-// A basic "skeleton" to read in art::Event records from a file,
-// access their information, and do something with them. 
 
-// See
-// <https://cdcvs.fnal.gov/redmine/projects/larsoftsvn/wiki/Using_the_Framework>
-// for a description of the ART classes used here.
-
-// Almost everything you see in the code below may have to be changed
-// by you to suit your task. The example task is to make histograms
-// and n-tuples related to dE/dx of particle tracks in the detector.
-
-// As you try to understand why things are done a certain way in this
-// example ("What's all this stuff about 'auto const&'?"), it will help
-// to read ADDITIONAL_NOTES.txt in the same directory as this file.
+// David Adams
+// February 2015
 
 #ifndef LbTupler_Module
 #define LbTupler_Module
@@ -22,11 +11,12 @@
 #include <sstream>
 
 // LArSoft includes
+#include "Geometry/Geometry.h"
 #include "Simulation/SimChannel.h"
 #include "Simulation/LArG4Parameters.h"
 #include "RecoBase/Hit.h"
+#include "RecoBase/Wire.h"
 #include "RecoBase/Cluster.h"
-#include "Geometry/Geometry.h"
 #include "Utilities/DetectorProperties.h"
 #include "Utilities/LArProperties.h"
 //#include "HitFinderLBNE/APAGeometryAlg.h"
@@ -34,6 +24,7 @@
 #include "SimulationBase/MCTruth.h"
 #include "SimpleTypesAndConstants/geo_types.h"
 #include "RawData/raw.h"
+#include "RawData/RawDigit.h"
 
 // Framework includes
 #include "art/Framework/Core/EDAnalyzer.h"
@@ -77,156 +68,208 @@ using geo::PlaneID;
 
 namespace LbTupler {
 
-  //-----------------------------------------------------------------------
-  //-----------------------------------------------------------------------
-  // class definition
+//**********************************************************************
+// Helper classes.
+//**********************************************************************
 
-  class LbTupler : public art::EDAnalyzer 
-  {
-  public:
+class PlanePosition {
+public:
+  unsigned int plane;          // plane # in the TPC
+  unsigned int rop;            // Global readout plane index.
+  unsigned int channel;        // Global channel.
+  unsigned int ropchannel;     // Channel in the readout plane.
+  double tick;                 // TDC tick.
+  int itick;                   // TDC tick.
+  bool valid;                  // True if this is a valid plane position
+  PlanePosition() : plane(0), rop(0), channel(0), ropchannel(0), tick(0), valid(false) { }
+};
+
+typedef vector<PlanePosition> PlanePositionVector;
+
+
+//**********************************************************************
+// Primary class.
+//**********************************************************************
+
+class LbTupler : public art::EDAnalyzer {
+public:
  
-    // Standard constructor and destructor for an ART module.
-    explicit LbTupler(fhicl::ParameterSet const& pset);
-    virtual ~LbTupler();
+  // Standard constructor and destructor for an ART module.
+  explicit LbTupler(fhicl::ParameterSet const& pset);
+  virtual ~LbTupler();
 
-    // This method is called once, at the start of the job. In this
-    // example, it will define the histograms and n-tuples we'll write.
-    void beginJob();
+  // This method is called once, at the start of the job. In this
+  // example, it will define the histograms and n-tuples we'll write.
+  void beginJob();
 
-    // This method is called once, at the start of each run. It's a
-    // good place to read databases or files that may have
-    // run-dependent information.
-    void beginRun(const art::Run& run);
+  // This method is called once, at the start of each run. It's a
+  // good place to read databases or files that may have
+  // run-dependent information.
+  void beginRun(const art::Run& run);
 
-    // This method reads in any parameters from the .fcl files. This
-    // method is called 'reconfigure' because it might be called in the
-    // middle of a job; e.g., if the user changes parameter values in an
-    // interactive event display.
-    void reconfigure(fhicl::ParameterSet const& pset);
+  // This method reads in any parameters from the .fcl files. This
+  // method is called 'reconfigure' because it might be called in the
+  // middle of a job; e.g., if the user changes parameter values in an
+  // interactive event display.
+  void reconfigure(fhicl::ParameterSet const& pset);
 
-    // The analysis routine, called once per event. 
-    void analyze (const art::Event& evt); 
+  // The analysis routine, called once per event. 
+  void analyze (const art::Event& evt); 
 
-    // Find the ROP for a given channel.
-    // Returns fnrop if channel is invalid.
-    unsigned int channelRop(unsigned int ichan) const;
+  // Find the ROP for a given channel.
+  // Returns fnrop if channel is invalid.
+  unsigned int channelRop(unsigned int ichan) const;
 
-    // Return the ADC-to-energy conversion factor for a channel.
-    double adc2de(unsigned int ichan) const;
+  // Return the ADC-to-energy conversion factor for a channel.
+  double adc2de(unsigned int ichan) const;
 
-  private:
+  // Return the plane information for a space point.
+  // post = {x, y, z, t} [cm,ns]
+  PlanePositionVector planePositions(const double post[]) const;
 
-    // The stuff below is the part you'll most likely have to change to
-    // go from this custom example to your own task.
+private:
 
-    // The parameters we'll read from the .fcl file.
-    int fdbg;                             // Debug level. Larger for more log noise.
-    string fTruthProducerLabel;      // The name of the producer that tracked simulated particles through the detector
-    string fParticleProducerLabel;   // The name of the producer that tracked simulated particles through the detector
-    string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
-    string fHitProducerLabel;        // The name of the producer that created hits
-    string fWireProducerLabel;       // The name of the producer that created wires
-    string fClusterProducerLabel;    // The name of the producer that created clusters
-    string fRawDigitLabel;           // The name of the producer that created the raw digits.
-    int fSelectedPDG;                     // PDG code of particle we'll focus on
-    double fBinSize;                      // For dE/dx work: the value of dx. 
+  // The stuff below is the part you'll most likely have to change to
+  // go from this custom example to your own task.
 
-    // Pointers to the histograms we'll create. 
-    TH1D* fPDGCodeHist;
-    TH1D* fMomentumHist;
-    TH1D* fTrackLengthHist;
+  // The parameters we'll read from the .fcl file.
+  int fdbg;                             // Debug level. Larger for more log noise.
+  string fTruthProducerLabel;      // The name of the producer that tracked simulated particles through the detector
+  string fParticleProducerLabel;   // The name of the producer that tracked simulated particles through the detector
+  string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
+  string fHitProducerLabel;        // The name of the producer that created hits
+  string fWireProducerLabel;       // The name of the producer that created wires
+  string fClusterProducerLabel;    // The name of the producer that created clusters
+  string fRawDigitLabel;           // The name of the producer that created the raw digits.
+  int fSelectedPDG;                     // PDG code of particle we'll focus on
+  double fBinSize;                      // For dE/dx work: the value of dx. 
 
-    // The n-tuples we'll create.
-    TTree* fSimulationNtuple;
-    TTree* fReconstructionNtuple;
-    TTree* fSimChannelNtuple;
+  // Pointers to the histograms we'll create. 
+  TH1D* fpdgCodeHist;
+  TH1D* fMomentumHist;
+  TH1D* fTrackLengthHist;
 
-    // The variables that will go into the n-tuple.
-    int fevent;
-    int fRun;
-    int fSubRun;
-    int fPDG;
-    int ftrackid;
-    // Arrays for 4-vectors: (x,y,z,t) and (Px,Py,Pz,E).
-    // Note: old-style C++ arrays are considered obsolete. However,
-    // to create simple n-tuples, we still need to use them. 
-    float fStartXYZT[4];
-    float fEndXYZT[4];
-    float fStartPE[4];
-    float fEndPE[4];
-    static const unsigned int maxpt = 20000;
-    unsigned int fnpt;
-    float fptx[maxpt];
-    float fpty[maxpt];
-    float fptz[maxpt];
-    float fptt[maxpt];
-    float fpte[maxpt];
-    // Number of dE/dx bins in a given track. 
-    int fndedxBins;
-    // The vector that will be used to accumulate dE/dx values.
-    vector<double> fdedxBins;
+  // The n-tuples we'll create.
+  TTree* fSimulationNtuple;
+  TTree* fReconstructionNtuple;
+  TTree* fSimChannelNtuple;
 
-    // Other variables that will be shared between different methods.
-    double                            fElectronsToGeV; // conversion factor
-    double fmcpdsmax;  // Maximum step size for filling the MC particle trajectory hists
-    double fadcmevu;   // MeV to ADC conversion factor for U-planes.
-    double fadcmevv;   // MeV to ADC conversion factor for V-planes.
-    double fadcmevx;   // MeV to ADC conversion factor for X-planes.
-    bool fhistusede;   // If true, raw and wire spectra are converted to MeV.
-    double fdemax;     // Max energy deposit for histogram ranges
+  // The variables that will go into the n-tuple.
+  int fevent;
+  int fRun;
+  int fSubRun;
+  int fpdg;
+  int ftrackid;
+  int fparent;
+  unsigned int fnchild;
+  unsigned int fndetchild;
+  static const unsigned int fmaxchild = 20;
+  int fchild[fmaxchild];
+  int fdetchild[fmaxchild];
 
-    // The maximum size of fdedxBins; in other words, it's the
-    // capacity of the vector. If we ever perform an operation that
-    // causes it to exceed this limit, it would mean fdedxBins would
-    // shift in memory, the n-tuple branch would point to the wrong
-    // location in memory, and everything would go wonky.
-    unsigned int fMaxCapacity;
+  // Arrays for 4-vectors: (x,y,z,t) and (Px,Py,Pz,E).
+  // Note: old-style C++ arrays are considered obsolete. However,
+  // to create simple n-tuples, we still need to use them. 
+  float fStartXYZT[4];
+  float fEndXYZT[4];
+  float fStartPE[4];
+  float fEndPE[4];
+  static const unsigned int maxpt = 20000;
+  unsigned int fnpt;     // # points in trajectory
+  unsigned int fnptdet;  // # trajectory points in any TPC
+  vector<int> fnpttpc;   // # trajectory point in each TPC
+  vector<int> fnptapa;   // # trajectory point in each APA
+  vector<int> fnptrop;   // # trajectory point in each ROP
+  float fptx[maxpt];     // point x
+  float fpty[maxpt];     // point y
+  float fptz[maxpt];     // point z
+  float fptt[maxpt];     // point t
+  float fpte[maxpt];     // point E
+  int fpttpc[maxpt];     // point TPC
+  int fptapa[maxpt];     // point APA
+  int fptuchan[maxpt];   // point channel in U-plane
+  int fptvchan[maxpt];   // point channel in V-plane
+  int fptzchan[maxpt];   // point channel in Z-plane
+  float fptutick[maxpt]; // point tick in U-plane
+  float fptvtick[maxpt]; // point tick in V-plane
+  float fptztick[maxpt]; // point tick in Z-plane
+  // Length of track in detector.
+  float fdetlen;        // Length of track in detector.
+  float fdettickmin;    // Smallest TDC tick in detector.
+  float fdettickmax;    // Largest TDC tick in detector.
+  float fdetx1;         // Detector entry x 
+  float fdety1;         // Detector entry y 
+  float fdetz1;         // Detector entry z 
+  float fdetx2;         // Detector exit x 
+  float fdety2;         // Detector exit y 
+  float fdetz2;         // Detector exit z 
+  // dE/dx bins on given track. 
+  int fndedxBins;
+  vector<double> fdedxBins;
 
-    // Sim channel info.
-    unsigned int fscCapacity;
-    unsigned int fscCount;
-    unsigned int ftdcTickMin;         // First TDC bin to draw.
-    unsigned int ftdcTickMax;         // Last+1 TDC bin to draw.
-    vector<unsigned int> fscChannel;  // Readout channel number
-    vector<float> fscEnergy;          // Energy summed over all TDCs
-    vector<float> fscCharge;          // Charge summed over all TDCs
-    vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
-    vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
-    vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
-    vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
-    vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
+  // Other variables that will be shared between different methods.
+  double                            fElectronsToGeV; // conversion factor
+  double fmcpdsmax;  // Maximum step size for filling the MC particle trajectory hists
+  double fadcmevu;   // MeV to ADC conversion factor for U-planes.
+  double fadcmevv;   // MeV to ADC conversion factor for V-planes.
+  double fadcmevz;   // MeV to ADC conversion factor for X-planes.
+  bool fhistusede;   // If true, raw and wire spectra are converted to MeV.
+  double fdemax;     // Max energy deposit for histogram ranges
 
-    // Geometry service.
-    art::ServiceHandle<geo::Geometry> fGeometry;       // pointer to Geometry service
+  // The maximum size of fdedxBins; in other words, it's the
+  // capacity of the vector. If we ever perform an operation that
+  // causes it to exceed this limit, it would mean fdedxBins would
+  // shift in memory, the n-tuple branch would point to the wrong
+  // location in memory, and everything would go wonky.
+  unsigned int fMaxCapacity;
 
-    // Geometry information.
-    unsigned int fncryo;         // # cryostats
-    unsigned int fntpc;          // # TPC
-    unsigned int fntpp;          // Total # TPC planes
-    vector<int> fntpcplane;      // # planes in each TPC
-    vector<int> fntpcplanewire;  // # wires in each plane
-    vector<string> ftpcname;     // Names for the TPCs.
-    vector<string> fplanename;   // Names for the TPC planes.
-    unsigned int fnrop;          // Total # readout planes (ROPs)
-    vector<int> fropfirstchan;   // first channel for each readout plane
-    vector<int> fropnchan;       // # channels for each readout plane
-    vector<int> froptpc;         // First TPC for each readout plane
-    vector<string> fropname;     // Names for the TPC readout planes, e.g. rop1x1.
-    vector<string> froporient;   // Wire orientation for each ROP plane: u, v or x.
-    unsigned int fnapa;          // Total # APA
-    vector<int> fapanrop;        // # ROP for each APA.
-    map<PlaneID, unsigned int> ftpcplanerop; // # ROP for each TPC plane.
+  // Sim channel info.
+  unsigned int fscCapacity;
+  unsigned int fscCount;
+  unsigned int ftdcTickMin;         // First TDC bin to draw.
+  unsigned int ftdcTickMax;         // Last+1 TDC bin to draw.
+  vector<unsigned int> fscChannel;  // Readout channel number
+  vector<float> fscEnergy;          // Energy summed over all TDCs
+  vector<float> fscCharge;          // Charge summed over all TDCs
+  vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
+  vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
+  vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
+  vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
+  vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
 
-    // LArProperties service (for drift speed)
-    art::ServiceHandle<util::DetectorProperties> fdetprop;
-    double fdriftspeed;
-    double fsamplingrate;
-    double fsamplingdriftspeed;
-    double fsamplingoffsetx;
-    double fsamplingoffsetu;
-    double fsamplingoffsetv;
+  // Geometry service.
+  art::ServiceHandle<geo::Geometry> fGeometry;       // pointer to Geometry service
 
-  }; // class LbTupler
+  // Geometry information.
+  unsigned int fncryo;          // # cryostats
+  unsigned int fntpc;           // # TPC
+  unsigned int fntpp;           // Total # TPC planes
+  vector<int> fntpcplane;       // # planes in each TPC
+  vector<int> fntpcplanewire;   // # wires in each plane
+  vector<string> ftpcname;      // Names for the TPCs.
+  vector<unsigned int> ftpcapa; // APA for each TPC.
+  vector<string> fplanename;    // Names for the TPC planes.
+  unsigned int fnrop;           // Total # readout planes (ROPs)
+  vector<int> fropfirstchan;    // first channel for each readout plane
+  vector<int> fropnchan;        // # channels for each readout plane
+  vector<int> froptpc;          // First TPC for each readout plane
+  vector<int> fropapa;          // the APA for each readout plane
+  vector<string> fropname;      // Names for the TPC readout planes, e.g. rop1x1.
+  vector<string> froporient;    // Wire orientation for each ROP plane: u, v or z.
+  unsigned int fnapa;           // Total # APA
+  vector<int> fapanrop;         // # ROP for each APA.
+  map<PlaneID, unsigned int> ftpcplanerop; // # ROP for each TPC plane.
+
+  // LArProperties service (for drift speed)
+  art::ServiceHandle<util::DetectorProperties> fdetprop;
+  double fdriftspeed;
+  double fsamplingrate;
+  double fsamplingdriftspeed;
+  double fsamplingoffsetx;
+  double fsamplingoffsetu;
+  double fsamplingoffsetv;
+
+}; // class LbTupler
 
 
 //************************************************************************
@@ -265,7 +308,7 @@ void LbTupler::beginJob() {
   int icry = 0;
   fntpp = 0;
   // Loop over TPCs.
-  for ( unsigned int itpc =0; itpc<fntpc; ++itpc ) {
+  for ( unsigned int itpc=0; itpc<fntpc; ++itpc ) {
     int nplane = fGeometry->Nplanes(itpc, icry);
     ostringstream sstpc;
     sstpc << "TPC" << itpc;
@@ -273,6 +316,10 @@ void LbTupler::beginJob() {
     fntpcplane.push_back(nplane);
     ftpcname.push_back(tpcname);
     int itdcrop = 0;   // # readouts for this TDC
+    // Find the APA for this channel. The geometry does support this and so
+    // we assign APA number based on TPC number.
+    unsigned int iapa = itpc/2;
+    ftpcapa.push_back(iapa);
     // Loop over planes in the TPC.
     for ( int ipla=0; ipla<nplane; ++ipla ) {
       int nwire = fGeometry->Nwires(ipla, itpc, icry);
@@ -326,7 +373,6 @@ void LbTupler::beginJob() {
       // If this is a new ROP, then record its channel range and TPC, and assign it to
       // an APA. For now, the latter assumes APA ordering follows TPC and is
       if ( irop == fnrop ) {  // We have a new readout plane.
-        unsigned int iapa = itpc/2;
         for ( unsigned int japa=fnapa; japa<=iapa; ++japa ) {
           fapanrop.push_back(0);
           ++fnapa;
@@ -335,9 +381,10 @@ void LbTupler::beginJob() {
         fropfirstchan.push_back(firstchan);
         fropnchan.push_back(lastchan - firstchan + 1 );
         froptpc.push_back(itpc);
+        fropapa.push_back(iapa);
         ostringstream ssrop;
-        const vector<string> pnames = {"u", "v", "x1", "x2", "a", "b", "c", "d", "e"};
-        const vector<string> orients = {"u", "v", "x", "x", "", "", "", "" };
+        const vector<string> pnames = {"u", "v", "z1", "z2", "a", "b", "c", "d", "e"};
+        const vector<string> orients = {"u", "v", "z", "z", "", "", "", "" };
         ssrop << "apa" << iapa << pnames[fapanrop[iapa]-1];
         fropname.push_back(ssrop.str());
         froporient.push_back(orients[fapanrop[iapa]-1]);
@@ -355,11 +402,18 @@ void LbTupler::beginJob() {
     cout << myname << "     Total # TPC channels: " << ntpcchan << endl;
     cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
     cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
+    cout << myname << endl;
+    cout << myname << "There are " << fntpc << " TPCs:" << endl;
+    cout << myname << "      name       APA" << endl;
+    for ( unsigned int itpc=0; itpc<fntpc; ++itpc ) {
+      cout << myname << setw(10) << ftpcname[itpc] << setw(10) << ftpcapa[itpc] << endl;
+    }
+    cout << myname << endl;
     cout << myname << "There are " << fnrop << " ROPs (readout planes):" << endl;
-    cout << myname << "      name     first chan     #chan  orient" << endl;
+    cout << myname << "      name  1st chan     #chan  orient" << endl;
     for ( unsigned int irop=0; irop<fnrop; ++irop ) {
       cout << myname << setw(10) << fropname[irop] << setw(10) << fropfirstchan[irop]
-           << setw(15) << fropnchan[irop] << setw(8) << froporient[irop] << endl;
+           << setw(10) << fropnchan[irop] << setw(8) << froporient[irop] << endl;
     }
   }
   double detLength = fGeometry->DetLength(); 
@@ -373,7 +427,7 @@ void LbTupler::beginJob() {
   double detSize = sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
 
   // Geometry dump from Michelle.
-  if ( fdbg > 3 ) {
+  if ( fdbg > 4 ) {
     double xyz[3];                                                                                                                                   
     double abc[3];                                                                 
     int chan;
@@ -431,7 +485,7 @@ void LbTupler::beginJob() {
   // Define the histograms. Putting semi-colons around the title
   // causes it to be displayed as the x-axis label if the histogram
   // is drawn.
-  fPDGCodeHist     = tfs->make<TH1D>("pdgcodes",";PDG Code;",                  5000, -2500, 2500);
+  fpdgCodeHist     = tfs->make<TH1D>("pdgcodes",";PDG Code;",                  5000, -2500, 2500);
   fMomentumHist    = tfs->make<TH1D>("mom",     ";particle Momentum (GeV);",    100, 0.,    10.);
   fTrackLengthHist = tfs->make<TH1D>("length",  ";particle track length (cm);", 200, 0, detLength);
 
@@ -441,33 +495,65 @@ void LbTupler::beginJob() {
   fReconstructionNtuple = tfs->make<TTree>("LbTuplerReconstruction","LbTuplerReconstruction");
   fSimChannelNtuple     = tfs->make<TTree>("LbTuplerSimChannel","LbTuplerSimChannel");
 
+  // Set array sizes.
+  fnpttpc.resize(fntpc);
+  fnptapa.resize(fnapa);
+  fnptrop.resize(fnrop);
+
   // Define the branches (columns) of our simulation n-tuple. When
   // we write a variable, we give the address of the variable to
   // TTree::Branch.
   fSimulationNtuple->Branch("event",       &fevent,          "event/I");
-  fSimulationNtuple->Branch("subrun",      &fSubRun,         "subrun/I");
   fSimulationNtuple->Branch("run",         &fRun,            "run/I");
-  fSimulationNtuple->Branch("trackid",     &ftrackid,        "trackid/I");
-  fSimulationNtuple->Branch("pdg",         &fPDG,            "pdg/I");
+  fSimulationNtuple->Branch("subrun",      &fSubRun,         "subrun/I");
+  fSimulationNtuple->Branch("pdg",         &fpdg,            "pdg/I");              // PDG ID
+  fSimulationNtuple->Branch("trackid",     &ftrackid,        "trackid/I");          // Track ID
+  fSimulationNtuple->Branch("parent",      &fparent,         "parent/I");           // Parent 
+  fSimulationNtuple->Branch("nchild",      &fnchild,         "nchild/I");           // # children
+  fSimulationNtuple->Branch("child",       fchild,           "child[nchild]/I");    // children
+  fSimulationNtuple->Branch("ndetchild",   &fndetchild,      "ndetchild/I");        // # children in det
+  fSimulationNtuple->Branch("detchild",    fdetchild,        "detchild[ndetchild]/I"); // children in det
   // When we write arrays, we give the address of the array to
   // TTree::Branch; in C++ this is simply the array name.
-  fSimulationNtuple->Branch("StartXYZT",   fStartXYZT,       "StartXYZT[4]/F");
-  fSimulationNtuple->Branch("EndXYZT",     fEndXYZT,         "EndXYZT[4]/F");
-  fSimulationNtuple->Branch("StartPE",     fStartPE,         "StartPE[4]/F");
-  fSimulationNtuple->Branch("EndPE",       fEndPE,           "EndPE[4]/F");
+  fSimulationNtuple->Branch("StartXYZT",   fStartXYZT,       "StartXYZT[4]/F");     // Starting point
+  fSimulationNtuple->Branch("EndXYZT",     fEndXYZT,         "EndXYZT[4]/F");       // Ending point
+  fSimulationNtuple->Branch("StartPE",     fStartPE,         "StartPE[4]/F");       // Starting momentum
+  fSimulationNtuple->Branch("EndPE",       fEndPE,           "EndPE[4]/F");         // Ending momentum
   // Trajectory points.
-  fSimulationNtuple->Branch("npt",       &fnpt,          "npt/i");
-  fSimulationNtuple->Branch("ptx",       fptx,           "ptx[npt]/F");
-  fSimulationNtuple->Branch("pty",       fpty,           "pty[npt]/F");
-  fSimulationNtuple->Branch("ptz",       fptz,           "ptz[npt]/F");
-  fSimulationNtuple->Branch("ptt",       fptt,           "ptt[npt]/F");
-  fSimulationNtuple->Branch("pte",       fpte,           "pte[npt]/F");
-  // For a variable-length array: include the number of bins.
-  fSimulationNtuple->Branch("ndedx",       &fndedxBins,      "ndedx/I");
-  // We're using a memory trick here: the data() method returns the
-  // address of the array inside the vector. Note after we call this
-  // method, the address of fdedxBins must not change.
-  fSimulationNtuple->Branch("dedx",        fdedxBins.data(), "dedx[ndedx]/D");
+  fSimulationNtuple->Branch("npt",          &fnpt,          "npt/i");             // # points
+  fSimulationNtuple->Branch("nptdet",       &fnptdet,       "nptdet/i");          // # points in detector
+  fSimulationNtuple->Branch("ntpc",         &fntpc,         "ntpc/i");            // # TPC
+  fSimulationNtuple->Branch("npttpc",       fnpttpc.data(), "npttpc[ntpc]/i");    // # points in each TPC
+  fSimulationNtuple->Branch("napa",         &fnapa,         "napa/i");            // # APA
+  fSimulationNtuple->Branch("nptapa",       fnptapa.data(), "nptapa[napa]/i");    // # points in each APA
+  fSimulationNtuple->Branch("nrop",         &fnrop,         "nrop/i");            // # ROP
+  fSimulationNtuple->Branch("nptrop",       fnptrop.data(), "nptrop[nrop]/i");    // # points in each ROP
+  fSimulationNtuple->Branch("ptx",          fptx,           "ptx[npt]/F");
+  fSimulationNtuple->Branch("pty",          fpty,           "pty[npt]/F");
+  fSimulationNtuple->Branch("ptz",          fptz,           "ptz[npt]/F");
+  fSimulationNtuple->Branch("ptt",          fptt,           "ptt[npt]/F");
+  fSimulationNtuple->Branch("pte",          fpte,           "pte[npt]/F");
+  fSimulationNtuple->Branch("pttpc",        fpttpc,         "pttpc[npt]/I");
+  fSimulationNtuple->Branch("ptapa",        fptapa,         "ptapa[npt]/I");
+  fSimulationNtuple->Branch("ptuchan",      fptuchan,       "ptuchan[npt]/I");
+  fSimulationNtuple->Branch("ptvchan",      fptvchan,       "ptvchan[npt]/I");
+  fSimulationNtuple->Branch("ptzchan",      fptzchan,       "ptzchan[npt]/I");
+  fSimulationNtuple->Branch("ptutick",      fptutick,       "ptutick[npt]/F");
+  fSimulationNtuple->Branch("ptvtick",      fptvtick,       "ptvtick[npt]/F");
+  fSimulationNtuple->Branch("ptztick",      fptztick,       "ptztick[npt]/F");
+  // length of track in detector
+  fSimulationNtuple->Branch("detlen",       &fdetlen,       "detlen/F");
+  fSimulationNtuple->Branch("dettickmin",   &fdettickmin,   "dettickmin/F");
+  fSimulationNtuple->Branch("dettickmax",   &fdettickmax,   "dettickmax/F");
+  fSimulationNtuple->Branch("detx1",        &fdetx1,        "detx1/F");
+  fSimulationNtuple->Branch("dety1",        &fdety1,        "dety1/F");
+  fSimulationNtuple->Branch("detz1",        &fdetz1,        "detz1/F");
+  fSimulationNtuple->Branch("detx2",        &fdetx2,        "detx2/F");
+  fSimulationNtuple->Branch("dety2",        &fdety2,        "dety2/F");
+  fSimulationNtuple->Branch("detz2",        &fdetz2,        "detz2/F");
+  // dE/dx bins
+  fSimulationNtuple->Branch("ndedx",        &fndedxBins,      "ndedx/I");
+  fSimulationNtuple->Branch("dedx",         fdedxBins.data(), "dedx[ndedx]/D");
 
   // A similar definition for the reconstruction n-tuple. Note that we
   // use some of the same variables in both n-tuples.
@@ -475,7 +561,7 @@ void LbTupler::beginJob() {
   fReconstructionNtuple->Branch("SubRun",  &fSubRun,         "SubRun/I");
   fReconstructionNtuple->Branch("Run",     &fRun,            "Run/I");
   fReconstructionNtuple->Branch("TrackID", &ftrackid,        "TrackID/I");
-  fReconstructionNtuple->Branch("PDG",     &fPDG,            "PDG/I");
+  fReconstructionNtuple->Branch("PDG",     &fpdg,            "PDG/I");
   fReconstructionNtuple->Branch("ndedx",   &fndedxBins,      "ndedx/I");
   fReconstructionNtuple->Branch("dedx",    fdedxBins.data(), "dedx[ndedx]/D");
 
@@ -524,7 +610,7 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
   fmcpdsmax                = p.get<double>("McParticleDsMax");
   fadcmevu                 = p.get<double>("AdcToMeVConversionU");
   fadcmevv                 = p.get<double>("AdcToMeVConversionV");
-  fadcmevx                 = p.get<double>("AdcToMeVConversionX");
+  fadcmevz                 = p.get<double>("AdcToMeVConversionZ");
   fdemax                   = p.get<double>("HistDEMax");
   fhistusede               = p.get<bool>("HistUseDE");
   return;
@@ -620,27 +706,51 @@ void LbTupler::analyze(const art::Event& event) {
     mcphists.push_back(ph);
   }
 
-  // Loop over particles.
+  // Loop over particles and fetch the # points inside the detector for each.
+  // Might later want to add the # descendants with points inside the detector.
+  map<unsigned int, unsigned int> ndetptmap;
   for ( auto const& particle : (*particleHandle) ) {
-    // For the methods you can call to get particle information,
-    // see ${NUTOOLS_DIR}/include/SimulationBase/MCParticle.h.
+    unsigned int npt = 0;
+    unsigned int tid = particle.TrackId();
+    size_t numberTrajectoryPoints = particle.NumberTrajectoryPoints();
+    for ( unsigned int ipt=0; ipt<numberTrajectoryPoints; ++ipt ) {
+      const auto& pos = particle.Position(ipt);
+      double xyzt[4] = {pos.X(), pos.Y(), pos.Z(), pos.T()};
+      geo::TPCID tpcid = fGeometry->FindTPCAtPosition(xyzt);
+      if ( tpcid.isValid ) ++npt;
+    }
+    ndetptmap[tid] = npt;
+  }
+
+  // Loop over particles.
+  // See ${NUTOOLS_DIR}/include/SimulationBase/MCParticle.h.
+  for ( auto const& particle : (*particleHandle) ) {
     ftrackid = particle.TrackId();
-
-    // Add the address of the MCParticle to the map, with the track ID as the key.
-    //dla particleMap[ftrackid] = &particle;
-
-    // Histogram the PDG code of every particle in the event.
-    fPDG = particle.PdgCode();
-    fPDGCodeHist->Fill( fPDG );
+    fpdg = particle.PdgCode();
+    fparent = particle.Mother();
+    fnchild = particle.NumberDaughters();
+    if ( fnchild > fmaxchild ) {
+      cout << myname << "WARNING: Too many child particles: " << fnchild << endl;
+      fnchild = fmaxchild;
+    }
+    fndetchild = 0;
+    for ( unsigned int ichi=0; ichi<fnchild; ++ichi ) {
+      unsigned int tid = particle.Daughter(ichi);
+      fchild[ichi] = tid;
+      if ( ndetptmap[tid] ) fdetchild[fndetchild++] = tid;
+    }
     if ( dbg > 2 ) {
-      cout << myname << "PDG=" << fPDG << ", status=" << particle.StatusCode()
+      cout << myname << "PDG=" << fpdg << ", status=" << particle.StatusCode()
            << ", Process: " << particle.Process() << endl;
     }
+
+    // Fill histograms.
+    fpdgCodeHist->Fill( fpdg );
 
     // For this example, we want to fill the n-tuples and histograms
     // only with information from the primary particles in the
     // event, whose PDG codes match a value supplied in the .fcl file.
-    if ( true || (particle.Process() == "primary"  &&  fPDG == fSelectedPDG) ) {
+    if ( true || ((particle.Process() == "primary"  &&  fpdg == fSelectedPDG)) ) {
       // A particle has a trajectory, consisting of a set of
       // 4-positions and 4-mommenta.
       size_t numberTrajectoryPoints = particle.NumberTrajectoryPoints();
@@ -664,37 +774,28 @@ void LbTupler::analyze(const art::Event& event) {
       momentumStart.GetXYZT( fStartPE );
       momentumEnd.GetXYZT( fEndPE );
 
-      // Display the TPC and channels for the starting point.
-      string mylab = myname + "  Particle chan: ";
-      if ( dbg > 3 ) {
-        cout << myname << "  Start position: (" << fStartXYZT[0] << ", " << fStartXYZT[1]
-             << ", " << fStartXYZT[2] << ")" << endl;
-        double startpos[3] = {fStartXYZT[0], fStartXYZT[1], fStartXYZT[2]};
-        geo::TPCID tpcid = fGeometry->FindTPCAtPosition(startpos);
-        if ( ! tpcid.isValid ) {
-          cout << myname << "  Start position is not in any TPC." << endl;
-        } else if ( tpcid.Cryostat != 0 ) {
-          cout << myname << "  Start position is the wrong cryostat!" << endl;
-        } else {
-          cout << myname << "  Start position TPC: " << tpcid.TPC << endl;
-          cout << mylab << "  TPC Pl  chan    tick" << endl;
-          unsigned int nplane = fGeometry->Nplanes(tpcid.TPC, tpcid.Cryostat);
-          // Find channel and tick for each TDC plane.
-          for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
-            unsigned int ichan = fGeometry->NearestChannel(startpos, ipla, tpcid.TPC, tpcid.Cryostat);
-            double tick = fdetprop->ConvertXToTicks(startpos[0], ipla, tpcid.TPC, tpcid.Cryostat);
-            cout << mylab << setw(5) << tpcid.TPC << setw(3) << ipla << setw(6) << ichan
-                 << setw(8) << tick << endl;
-          }
-        }
-      }
-
       // Fill trajectory.
-      fnpt = 0.0;
+      fnpt = 0;
+      fnptdet = 0;
+      for ( auto& count : fnpttpc ) count = 0;
+      for ( auto& count : fnptapa ) count = 0;
+      for ( auto& count : fnptrop ) count = 0;
+      
       double x0 = 0.0;
       double y0 = 0.0;
       double z0 = 0.0;
+      double t0 = 0.0;
       double e0 = 0.0;
+      bool indet0 = false;
+      fdetlen = 0.0;
+      fdettickmin =  1000000.0;
+      fdettickmax = -1000000.0;
+      fdetx1 = 1.e6;
+      fdety1 = 1.e6;
+      fdetz1 = 1.e6;
+      fdetx2 = 1.e6;
+      fdety2 = 1.e6;
+      fdetz2 = 1.e6;
       for ( unsigned int ipt=0; ipt<numberTrajectoryPoints; ++ipt ) {
         if ( ipt >= maxpt ) {
           cout << myname << "Found more than " << maxpt << " trajectory points."
@@ -708,20 +809,75 @@ void LbTupler::analyze(const art::Event& event) {
         fptz[ipt] = pos.Z();
         fptt[ipt] = pos.T();
         fpte[ipt] = pos.E();
+        double xyzt[4] = {pos.X(), pos.Y(), pos.Z(), pos.T()};
+        geo::TPCID tpcid = fGeometry->FindTPCAtPosition(xyzt);
+        fptuchan[ipt] = -1;
+        fptvchan[ipt] = -1;
+        fptzchan[ipt] = -1;
+        fptutick[ipt] = -1.0;
+        fptvtick[ipt] = -1.0;
+        fptztick[ipt] = -1.0;
+        bool indet = false;
         ++fnpt;
         double x = pos.X();
         double y = pos.Y();
         double z = pos.Z();
+        double t = pos.T();
         double e = particle.E(ipt);
         double detot = 1000.0*(e0 - e);
-        if ( fdbg > 3 ) cout << myname << "MC Particle trajectory point: ("
-                             << x << ", " << y << ", " << z << ")" << endl;
+        if ( ! tpcid.isValid ) {
+          fpttpc[ipt] = -1;
+          fptapa[ipt] = -1;
+        } else if ( tpcid.Cryostat != 0 ) {
+          fpttpc[ipt] = -2;
+          fptapa[ipt] = -2;
+        } else {
+          indet = true;
+          unsigned int itpc = tpcid.TPC;
+          unsigned int iapa = ftpcapa[itpc];
+          fpttpc[ipt] = itpc;
+          fptapa[ipt] = iapa;
+          if ( fnptdet == 0 ) {
+            fdetx1 = x;
+            fdety1 = y;
+            fdetz1 = z;
+          }
+          fdetx2 = x;
+          fdety2 = y;
+          fdetz2 = z;
+          // Find the (channel, tick) for each plane in this TPC.
+          PlanePositionVector pps = planePositions(xyzt);
+          if ( pps.size() ) {
+            ++fnptdet;
+            ++fnpttpc[itpc];
+            ++fnptapa[iapa];
+          }
+          for ( const auto& pp : pps ) {
+            unsigned int irop = pp.rop;
+            string orient = froporient[irop];
+            ++fnptrop[irop];
+            if ( orient == "u" ) {
+              fptuchan[ipt] = pp.ropchannel;
+              fptutick[ipt] = pp.tick;
+            } else if ( orient == "v" ) {
+              fptvchan[ipt] = pp.ropchannel;
+              fptvtick[ipt] = pp.tick;
+            } else if ( orient == "z" ) {
+              fptzchan[ipt] = pp.ropchannel;
+              fptztick[ipt] = pp.tick;
+            }
+          }
+        }
+        if ( fdbg > 3 ) cout << myname << "MC Particle " << ftrackid
+                             << " trajectory point " << fnpt << ": ("
+                             << x << ", " << y << ", " << z << ", " << t << ")" << endl;
         // Fill time-channel histogram with dE for each pair of adjacent tracjectory points.
-        // Increase the number of point to ensure granularity less than fmcpdsmax;
+        // Increase the number of points to ensure granularity less than fmcpdsmax;
         if ( ipt != 0 ) {
           double dx = x - x0;
           double dy = y - y0;
           double dz = z - z0;
+          double dt = t - t0;
           double ds = sqrt(dx*dx + dy*dy + dz*dz);
           unsigned int nstep = ds/fmcpdsmax + 1;
           double invstep = 1.0/nstep;
@@ -731,35 +887,36 @@ void LbTupler::analyze(const art::Event& event) {
             double xa = x0 + (istp+0.5)*invstep*dx;
             double ya = y0 + (istp+0.5)*invstep*dy;
             double za = z0 + (istp+0.5)*invstep*dz;
-            double posa[3] = {xa, ya, za};
-            geo::TPCID tpcid = fGeometry->FindTPCAtPosition(posa);
-            if ( tpcid.isValid ) {
-              unsigned int nplane = fGeometry->Nplanes(tpcid.TPC, tpcid.Cryostat);
-              for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
-                PlaneID tpp(tpcid, ipla);
-                auto iirop = ftpcplanerop.find(tpp);
-                if ( iirop == ftpcplanerop.end() ) {
-                  cout << myname << "ERROR: ftpcplanerop invalid key: ["  << tpp << "]" << endl;
-                  abort();
-                }
-                unsigned int irop = iirop->second;
-                TH2* ph = mcphists[irop];
-                double tick = fdetprop->ConvertXToTicks(xa, ipla, tpcid.TPC, tpcid.Cryostat);
-                unsigned int ichan = fGeometry->NearestChannel(posa, ipla, tpcid.TPC, tpcid.Cryostat);
-                unsigned int iropchan = ichan - fropfirstchan[irop];
-                if ( fdbg > 3 ) {
-                  cout << myname << "    Filling " << ph->GetName() << ": tick=" << tick << ", chan=" << iropchan
-                       << ", DE=" << de << " MeV" << endl;
-                }
-                ph->Fill(tick, iropchan, de);
+            double ta = t0 + (istp+0.5)*invstep*dt;
+            double postim[4] = {xa, ya, za, ta};
+            PlanePositionVector pps = planePositions(postim);
+            for ( const auto& pp : pps ) {
+              if ( ! pp.valid ) cout << myname << "    Invalid plane position!" << endl;
+              TH2* ph = mcphists[pp.rop];
+              if ( fdbg > 3 ) {
+                cout << myname << "    Filling " << ph->GetName()
+                     << ": tick=" << pp.tick
+                     << ", chan=" << pp.ropchannel
+                     << ", DE=" << de << " MeV" << endl;
               }
+              ph->Fill(pp.tick, pp.ropchannel, de);
+              if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
+              if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
             }
           }
+          // If this and the last point are in the detector, increment the detector path length.
+          if ( indet0 && indet0 ) fdetlen += ds;
         }
         x0 = x,
         y0 = y;
         z0 = z;
+        t0 = t;
         e0 = e;
+        indet0 = indet;
+      }
+      if ( fnptdet != ndetptmap[ftrackid] ) {
+        cout << myname << "WARNING: Inconsistent # detector points: "
+             << fnptdet << " != " << ndetptmap[ftrackid] << endl;
       }
 
       // Use a polar-coordinate view of the 4-vectors to
@@ -1001,7 +1158,7 @@ void LbTupler::analyze(const art::Event& event) {
     unsigned int iropchan = ichan - fropfirstchan[irop];
     int nadc = digit.NADC();
     vector<short> adcs;
-    raw::Uncompress(digit.fADC, adcs, digit.Compression());
+    raw::Uncompress(digit.ADCs(), adcs, digit.Compression());
     unsigned int nzero = 0;
     for ( auto adc : adcs ) if ( adc == 0.0 ) ++nzero;
     if ( dbg > 3 ) cout << myname << "Digit channel " << ichan
@@ -1092,10 +1249,10 @@ void LbTupler::analyze(const art::Event& event) {
     if ( dbg > 3 ) cout << myname << "Hit channel " << ichan
                         << " (ROP-chan = " << irop << "-" << iropchan << ")"
                         << " with view " << hit.View()
-                        << " has charge " << hit.Charge() 
+                        << " has charge " << hit.SummedADC() 
                         << " at TDC " << hit.PeakTime()
                         << "." << endl;
-    double wt = hit.Charge();
+    double wt = hit.SummedADC();
     if ( wt == 0 ) continue;
     if ( fhistusede ) wt *= adc2de(ichan);
     ph->Fill(hit.PeakTime(), hit.Channel(), wt);
@@ -1129,12 +1286,52 @@ double LbTupler::adc2de(unsigned int ichan) const {
   unsigned int irop = channelRop(ichan);
   if      ( froporient[irop] == "u" ) cfac = fadcmevu;
   else if ( froporient[irop] == "v" ) cfac = fadcmevv;
-  else if ( froporient[irop] == "x" ) cfac = fadcmevx;
+  else if ( froporient[irop] == "z" ) cfac = fadcmevz;
   else {
     cout << myname << "ERROR: plane does not have specified orientation: " << irop << endl;
     abort();
   }
   return cfac;
+}
+
+//************************************************************************
+// Return the channel and tick for a spacepoint.
+//************************************************************************
+
+PlanePositionVector LbTupler::planePositions(const double postim[]) const {
+  const string myname = "LbTupler::planePositions: ";
+  PlanePositionVector pps;
+  geo::TPCID tpcid = fGeometry->FindTPCAtPosition(postim);
+  if ( ! tpcid.isValid ) return pps;
+  unsigned int nplane = fGeometry->Nplanes(tpcid.TPC, tpcid.Cryostat);
+  for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
+    PlaneID tpp(tpcid, ipla);
+    auto iirop = ftpcplanerop.find(tpp);
+    if ( iirop == ftpcplanerop.end() ) {
+      cout << myname << "ERROR: ftpcplanerop invalid key: ["  << tpp << "]" << endl;
+      abort();
+      continue;
+    }
+    unsigned int irop = iirop->second;
+    double tick = fdetprop->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
+    double tickoff = postim[3]/fsamplingrate;
+    tick += tickoff;
+    if ( fdbg > 4 ) cout << "Tick offset: " << tickoff << " = " << postim[3] << "/" << fsamplingrate << endl;
+    unsigned int ichan = fGeometry->NearestChannel(postim, ipla, tpcid.TPC, tpcid.Cryostat);
+    unsigned int iropchan = ichan - fropfirstchan[irop];
+    int itick = int(tick);
+    if ( tick < 0.0 ) itick += -1;
+    PlanePosition pp;
+    pp.plane = ipla;
+    pp.rop = irop;
+    pp.channel = ichan;
+    pp.tick = tick;
+    pp.itick = tick;
+    pp.ropchannel = iropchan;
+    pp.valid = true;
+    pps.push_back(pp);
+  }
+  return pps;
 }
 
 //************************************************************************
