@@ -84,6 +84,15 @@ physics:
     LbTupler: 
     {
 
+      # Control flags.
+      DoTruth:        true
+      DoMCParticles:  true
+      DoSimChannels:  false
+      DoRaw:          false
+      DoWires:        false
+      DoHits:         false
+      DoClusters:     true
+
       # The "module_type" tells us which module to run. The name here
       # matches the name supplied to DEFINE_ART_MODULE near the end of
       # LbTupler_module.cc.
@@ -122,7 +131,7 @@ physics:
       WireLabel:        "caldata"
 
       # The same for clusters:
-      ClusterLabel:    "fuzzycluster"
+      ClusterLabel:    "clustercheat"
 
       # The same for raw digits.
       RawDigitLabel:   "daq"

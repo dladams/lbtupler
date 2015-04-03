@@ -1,25 +1,26 @@
 
-simple_plugin(LbTupler "module"
-			Geometry_service
-                        Geometry
-                        LArProperties_service
-                        DetectorProperties_service
-                        RawData
-                        RecoBase
-                        ${SIMULATIONBASE}
-                        ${ART_FRAMEWORK_CORE}
-			${ART_FRAMEWORK_PRINCIPAL}
-			${ART_FRAMEWORK_SERVICES_REGISTRY}
-                        ${ART_FRAMEWORK_SERVICES_OPTIONAL}
-                        ${ART_FRAMEWORK_SERVICES_OPTIONAL_TFILESERVICE_SERVICE}
- 			${ART_PERSISTENCY_COMMON}
-			${ART_PERSISTENCY_PROVENANCE}
-			${ART_UTILITIES}
-			${MF_MESSAGELOGGER}
-			${MF_UTILITIES}
-			${CETLIB}
-			${ROOT_BASIC_LIB_LIST}
-              BASENAME_ONLY
+art_make(BASENAME_ONLY
+         MODULE_LIBRARIES
+           LbTupler
+	   Geometry_service
+           Geometry
+           LArProperties_service
+           DetectorProperties_service
+           RawData
+           RecoBase
+           ${SIMULATIONBASE}
+           ${ART_FRAMEWORK_CORE}
+           ${ART_FRAMEWORK_PRINCIPAL}
+           ${ART_FRAMEWORK_SERVICES_REGISTRY}
+           ${ART_FRAMEWORK_SERVICES_OPTIONAL}
+           ${ART_FRAMEWORK_SERVICES_OPTIONAL_TFILESERVICE_SERVICE}
+           ${ART_PERSISTENCY_COMMON}
+           ${ART_PERSISTENCY_PROVENANCE}
+           ${ART_UTILITIES}
+           ${MF_MESSAGELOGGER}
+           ${MF_UTILITIES}
+           ${CETLIB}
+           ${ROOT_BASIC_LIB_LIST}
 )
 
 install_headers()

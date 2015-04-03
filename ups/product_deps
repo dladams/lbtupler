@@ -9,7 +9,8 @@ product         version
 lbnecode	v04_00_01
 gcc		v4_9_1
 
-cetbuildtools	v4_04_03	-	only_for_build
+#cetbuildtools	v4_04_03	-	only_for_build
+cetbuildtools	v4_08_01	-	only_for_build
 end_product_list
 
   
