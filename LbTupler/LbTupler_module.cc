@@ -58,6 +58,7 @@
 
 #include "reducedPDG.h"
 #include "intProcess.h"
+#include "MCTrackPerf.h"
 
 using std::cout;
 using std::endl;
@@ -141,6 +142,7 @@ private:
   int fdbg;                        // Debug level. Larger for more log noise.
   bool fDoTruth;                   // Read truth container.
   bool fDoMCParticles;             // Create MC particle tree and histograms.
+  bool fDoMCTrackPerf;             // Evalueate MC track performance.
   bool fDoSimChannels;             // Create the SimChannel tree and histograms.
   bool fDoRaw;                     // Create the RawDigits tree and histograms.
   bool fDoWires;                   // Create the Wire histograms.
@@ -627,6 +629,7 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
   fdbg                     = p.get<int>        ("DebugLevel");
   fDoTruth                 = p.get<bool>("DoTruth");
   fDoMCParticles           = p.get<bool>("DoMCParticles");
+  fDoMCTrackPerf           = p.get<bool>("DoMCTrackPerf");
   fDoSimChannels           = p.get<bool>("DoSimChannels");
   fDoRaw                   = p.get<bool>("DoRaw");
   fDoWires                 = p.get<bool>("DoWires");
@@ -692,20 +695,46 @@ void LbTupler::analyze(const art::Event& event) {
   // MC particles
   //************************************************************************
 
-  if ( fDoMCParticles ) {
-    // Get all the MC particles for the event.
-    art::Handle< vector<simb::MCParticle> > particleHandle;
+  // Get all the MC particles for the event.
+  art::Handle< vector<simb::MCParticle> > particleHandle;
+  if ( fDoMCParticles || fDoMCTrackPerf ) {
     event.getByLabel(fParticleProducerLabel, particleHandle);
-    if ( dbg > 1 ) cout << myname << "Particle count: " << particleHandle->size() << endl;
+    if ( dbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
+  }
 
-    // Get all the simulated channels for the event. These channels
-    // include the energy deposited for each track.
-    art::Handle<vector<sim::SimChannel>> simChannelHandle;
+  // Get all the simulated channels for the event. These channels
+  // include the energy deposited for each track.
+  art::Handle<vector<sim::SimChannel>> simChannelHandle;
+  if ( fDoMCParticles || fDoSimChannels || fDoMCTrackPerf ) {
     event.getByLabel(fSimulationProducerLabel, simChannelHandle);
     if ( dbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
-    if ( simChannelHandle->size() > fscCapacity ) {
-      cout << myname << "WARNING: Sim channel count exceeds TTree capacity." << endl;
+  }
+
+  // Create vector of selected MC particles for analysis.
+  vector<MCTrackPerf> selectedMCTrackPerfsMC;    // Filled with MCParticle hits.
+  vector<MCTrackPerf> selectedMCTrackPerfsSC;    // Filled with SimChannel.
+  if ( fDoMCTrackPerf ) {
+    for ( auto const& particle : (*particleHandle) ) {
+      int trackid = particle.TrackId();
+      int rpdg = reducedPDG(particle.PdgCode());
+      int proc = intProcess(particle.Process());
+      // Select particles.
+      if ( proc == 0 && rpdg < 5 ) {
+        if ( dbg > 1 ) cout << myname << "Selecting";
+        selectedMCTrackPerfsMC.push_back(MCTrackPerf(*&particle));
+        selectedMCTrackPerfsSC.push_back(MCTrackPerf(*&particle));
+      } else {
+        if ( dbg > 1 ) cout << myname << "Rejecting";
+      }
+      if ( dbg > 1 ) cout << " MC particle " << setw(4) << trackid 
+                          << " with RPDG=" << setw(2) << rpdg
+                          << " and PROC=" << setw(2) << proc
+                          << endl;
     }
+  }  // end DoMCTrackPerf
+
+  // MCParticles histograms and tree.
+  if ( fDoMCParticles ) {
 
     // Create the event MC particle histograms.
     vector<TH2*> mcphists;
@@ -771,10 +800,21 @@ void LbTupler::analyze(const art::Event& event) {
       }
       if ( dbg > 2 ) {
         cout << myname << "ID=" << ftrackid << ", PDG=" << fpdg
+             << ", RPDG=" << frpdg
              << ", status=" << particle.StatusCode()
-             << ", Process: " << particle.Process()
+             << ", Process: " << particle.Process() << "(" << fproc << ")"
              << ", Parent: " << fparent
              << endl;
+      }
+
+      // Find matching selected track.
+      MCTrackPerf* pmctp = nullptr;
+      for ( auto& mctp : selectedMCTrackPerfsMC ) {
+        if ( int(mctp.trackID()) == ftrackid ) {
+          pmctp = &mctp;
+          if ( dbg > 1 ) cout << myname << "  This is a selected track." << endl;
+          break;
+        }
       }
 
       // Fill histograms.
@@ -911,7 +951,7 @@ void LbTupler::analyze(const art::Event& event) {
               }
             }
           }
-          if ( fdbg > 3 ) cout << myname << "MC Particle " << ftrackid
+          if ( fdbg > 3 ) cout << myname << "  MC Particle " << ftrackid
                                << " trajectory point " << fnpt << ": ("
                                << x << ", " << y << ", " << z << ", " << t << ")" << endl;
           if ( ipt ) {
@@ -920,7 +960,7 @@ void LbTupler::analyze(const art::Event& event) {
             if ( tpcid.isValid && (!tpcid0.isValid or tpcid.TPC != tpcid0.TPC ) ) {
               ++fntpcin;
               if ( fdbg > 3 ) {
-                cout << myname << "  Entering TPC " << tpcid.TPC;
+                cout << myname << "    Entering TPC " << tpcid.TPC;
                 if ( tpcid0.isValid ) cout << ", exiting TPC " << tpcid0.TPC;
                 cout << endl;
               }
@@ -928,7 +968,7 @@ void LbTupler::analyze(const art::Event& event) {
             if ( tpcid0.isValid && (!tpcid.isValid or tpcid.TPC != tpcid0.TPC ) ) {
               ++fntpcout;
               if ( fdbg > 3 ) {
-                cout << myname << "  Exiting TPC " << tpcid0.TPC;
+                cout << myname << "    Exiting TPC " << tpcid0.TPC;
                 if ( tpcid.isValid ) cout << ", entering TPC " << tpcid.TPC;
                 cout << endl;
               }
@@ -936,7 +976,7 @@ void LbTupler::analyze(const art::Event& event) {
             if ( icry!=notcry && icry!=icry0 ) {
               ++fncryin;
               if ( fdbg > 3 ) {
-                cout << myname << "  Entering cryostat " << icry;
+                cout << myname << "    Entering cryostat " << icry;
                 if ( icry0 != notcry ) cout << ", exiting cryostat " << icry0;
                 cout << endl;
               }
@@ -944,7 +984,7 @@ void LbTupler::analyze(const art::Event& event) {
             if ( icry0!=notcry && icry!=icry0 ) {
               ++fncryout;
               if ( fdbg > 3 ) {
-                cout << myname << "  Exiting cryostat " << icry0;
+                cout << myname << "    Exiting cryostat " << icry0;
                 if ( icry != notcry ) cout << ", entering cryostat " << icry;
                 cout << endl;
               }
@@ -952,7 +992,7 @@ void LbTupler::analyze(const art::Event& event) {
           }
           // Fill time-channel histogram with dE for each pair of adjacent tracjectory points.
           // Increase the number of points to ensure granularity less than fmcpdsmax;
-          if ( ipt != 0 ) {
+          if ( ipt != 0 && indet0 && indet) {
             double dx = x - x0;
             double dy = y - y0;
             double dz = z - z0;
@@ -961,7 +1001,7 @@ void LbTupler::analyze(const art::Event& event) {
             unsigned int nstep = ds/fmcpdsmax + 1;
             double invstep = 1.0/nstep;
             double de = invstep*detot;
-            if ( fdbg > 3 ) cout << myname << "  # steps: " << nstep << endl;
+            if ( fdbg > 3 ) cout << myname << "    # steps: " << nstep << endl;
             for ( unsigned int istp=0; istp<nstep; ++istp ) {
               double xa = x0 + (istp+0.5)*invstep*dx;
               double ya = y0 + (istp+0.5)*invstep*dy;
@@ -981,10 +1021,11 @@ void LbTupler::analyze(const art::Event& event) {
                 ph->Fill(pp.tick, pp.ropchannel, de);
                 if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
                 if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
+                if ( pmctp != nullptr ) pmctp->add(pp.channel, pp.tick, de);
               }
             }
             // If this and the last point are in the detector, increment the detector path length.
-            if ( indet0 && indet0 ) fdetlen += ds;
+            if ( indet0 && indet ) fdetlen += ds;
           }
           x0 = x,
           y0 = y;
@@ -1003,7 +1044,7 @@ void LbTupler::analyze(const art::Event& event) {
         // Use a polar-coordinate view of the 4-vectors to
         // get the track length.
         double trackLength = ( positionEnd - positionStart ).Rho();
-        if ( dbg > 2 ) cout << myname << " Track length: " << trackLength << " mm" << endl;
+        if ( dbg > 2 ) cout << myname << "  Track length: " << trackLength << " mm" << endl;
 
         // Make a histogram of the track length.
         fTrackLengthHist->Fill( trackLength );
@@ -1096,22 +1137,33 @@ void LbTupler::analyze(const art::Event& event) {
         // n-tuple. The following command actually writes those
         // values.
         fSimulationNtuple->Fill();
-
       } // if selected
     } // end loop over all particles in the event. 
+    if ( dbg > 2 ) {
+      cout << myname << "Tree " << fSimulationNtuple->GetName()
+                     << " entry count  is " << fSimulationNtuple->GetEntries() << endl;
+      for ( auto ph : mcphists ) {
+        cout << myname << "Histogram " << setw(20) << ph->GetName()
+             << " entry count is " << ph->GetEntries() << endl;
+      }
+    }
   }  // end Do MCParticle
+
+  if ( fDoMCTrackPerf ) {
+    if ( dbg > 0 ) cout << myname << "Selected MC track list with MCParticle fill (size = "
+                        << selectedMCTrackPerfsMC.size() << ")" << endl;
+    for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
+      mctrackperf.print(cout, dbg, myname + "  ");
+    }  // End loop over selected MC tracks
+  }  // end DoMCTrackPerf
 
   //************************************************************************
   // Sim channels.
   //************************************************************************
 
-
   if ( fDoSimChannels ) {
-    // Get all the simulated channels for the event. These channels
-    // include the energy deposited for each track.
-    art::Handle<vector<sim::SimChannel>> simChannelHandle;
-    event.getByLabel(fSimulationProducerLabel, simChannelHandle);
-    if ( dbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
+
+    // Check array sizes.
     if ( simChannelHandle->size() > fscCapacity ) {
       cout << myname << "WARNING: Sim channel count exceeds TTree capacity." << endl;
     }
@@ -1139,8 +1191,8 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto& val : fscChannel ) val = 0;
     for ( auto& val : fscCharge ) val = 0.0;
     for ( auto& val : fscEnergy ) val = 0.0;
-    for ( auto const& chan : (*simChannelHandle) ) {
-      auto ichan = chan.Channel();
+    for ( auto const& simchan : (*simChannelHandle) ) {
+      auto ichan = simchan.Channel();
       unsigned int irop = channelRop(ichan);
       if ( irop == fnrop ) {
         cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
@@ -1158,7 +1210,7 @@ void LbTupler::analyze(const art::Event& event) {
                           << ", ROP=" << irop << ", ROP channel=" << iropchan << endl;
       if ( fscCount < fscCapacity ) {
         fscChannel[fscCount] = ichan;
-        auto const& idemap = chan.TDCIDEMap();
+        auto const& idemap = simchan.TDCIDEMap();
         double energy = 0.0;  // Total energy in the channel
         double charge = 0.0;  // Total charge in the channel
         double energytdc = 0.0;  // Total energy*tdc in the channel
@@ -1175,6 +1227,7 @@ void LbTupler::analyze(const art::Event& event) {
           unsigned int tdcNide = idevec.size();
           // Sum over the tracks contributing to this channel sample.
           for ( auto& ide : idevec ) {
+if ( dbg > 3 ) cout << "SimChannel TrackID: " << ide.trackID << endl;
             tdcEnergy += ide.energy;
             tdcCharge += ide.numElectrons;
           }
@@ -1210,8 +1263,36 @@ void LbTupler::analyze(const art::Event& event) {
         cout << myname << "WARNING: Skipping sim channel " << ichan << endl;
       }
     } // end loop over sim channels in the event. 
+
     fSimChannelNtuple->Fill();
   }  // end DoSimChannel
+
+  if ( fDoMCTrackPerf ) {
+    if ( dbg > 0 ) cout << myname << "Selected MC track list with SimChannel fill (size = "
+                        << selectedMCTrackPerfsSC.size() << ")" << endl;
+    for ( auto& mctrackperf : selectedMCTrackPerfsSC ) {
+      // Add the sim channel info to the selected tracks.
+      for ( auto const& simchan : (*simChannelHandle) ) {
+        auto const& idemap = simchan.TDCIDEMap();
+        //for ( auto const& ideent : idemap ) {
+        //  auto idevec = ideent.second;
+        //  for ( auto& ide : idevec ) {
+        //    cout << myname << "IDE trackID=" << ide.trackID << ", energy=" << ide.energy << endl;
+        //  }
+        //}
+        mctrackperf.addSimChannel(*&simchan);
+      }  // End loop over sim channels in the event. 
+      if ( dbg > 4 ) {
+        cout << "Dumping MCTrackPerf channels:" << endl;
+        mctrackperf.print(cout, 1, myname + "  ");
+      }
+      if ( dbg > 3 ) {
+        cout << "Dumping MCTrackPerf hits:" << endl;
+        mctrackperf.buildHits();
+        mctrackperf.print(cout, 2, myname + "  ");
+      }
+    }  // End loop over selected MC tracks
+  }  // end DoMCTrackPerf
 
   //************************************************************************
   // Raw digits.
@@ -1394,9 +1475,31 @@ void LbTupler::analyze(const art::Event& event) {
       abort();
     }
     // Loop over clusters.
+    int wclus = 3;
+    int wtpc = 1;
+    int wapa = 1;
+    int wchan = 4;
+    int whit = 3;
+    int wtick = 5;
+    int wadc = 4;
+    int wsadc = 6;
+    int wwid = 18;
     for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+      art::Ptr<recob::Cluster> pclu = clusters[iclu];
       std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
-      if ( dbg > 2 ) cout << myname << "  Cluster " << iclu << " hit count: " << hits.size() << endl;
+      if ( dbg > 2 ) {
+        int cltpc = pclu->Plane().TPC;
+        int clapa = ftpcapa[cltpc];
+        float cladc = pclu->SummedADC();
+        float clchg = pclu->Integral();
+        cout << myname << "  Cluster " << setw(wclus) << iclu
+             << " TPC: " << setw(wtpc) << cltpc
+             << " APA: " << setw(wapa) << clapa
+             << " hit count: " << setw(whit) << hits.size()
+             << ", ADC=" << setw(wsadc) << int(cladc)
+             << ", Q=" << clchg
+             << endl;
+        }
       // Loop over hits on the cluster.
       for ( auto& phit : hits ) {
         if ( phit.isNull() ) {
@@ -1404,14 +1507,17 @@ void LbTupler::analyze(const art::Event& event) {
           abort();
         }
         WireID wid = phit->WireID();
+        ostringstream sswid;
+        sswid << wid;
         unsigned int chan = phit->Channel();
         int lid = phit->LocalIndex();
         unsigned int tick1 = phit->StartTick();
         unsigned int tick2 = phit->EndTick();
         if ( dbg > 3 ) cout << myname << "    "
-                            << chan << "-" << lid
-                            << ";  " << wid << " I:" << lid
-                            << "  (" << tick1 << ", " << tick2 << ")"
+                            << setw(wchan) << chan << "-" << lid
+                            << " " << setw(wwid) << sswid.str() << " I:" << lid
+                            << "  (" << setw(wtick) << tick1 << ", " << setw(wtick) << tick2 << ")"
+                            << ", ADC=" << setw(wadc) << int(phit->SummedADC())
                             << endl;
       }  // end loop over cluster hits
       ++iclu;

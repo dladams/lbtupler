@@ -1,8 +1,7 @@
 
 art_make(BASENAME_ONLY
-         MODULE_LIBRARIES
-           LbTupler
-	   Geometry_service
+         LIB_LIBRARIES
+           Geometry_service
            Geometry
            LArProperties_service
            DetectorProperties_service
@@ -21,6 +20,8 @@ art_make(BASENAME_ONLY
            ${MF_UTILITIES}
            ${CETLIB}
            ${ROOT_BASIC_LIB_LIST}
+         MODULE_LIBRARIES
+           LbTupler
 )
 
 install_headers()
