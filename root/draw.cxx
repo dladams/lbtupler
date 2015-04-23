@@ -15,7 +15,7 @@ using std::endl;
 using std::hex;
 using std::dec;
 
-int draw(std::string name, int how =0) {
+int draw(std::string name, int how =0, double xmin =0.0, double xmax =0.0) {
   double xh1 = 0.05;
   double xh2 = 0.94;
   TObject* pobj = 0;
@@ -55,6 +55,7 @@ int draw(std::string name, int how =0) {
     ppalax->SetX2NDC(xh2+0.015);
     ppalax->SetTitleOffset(0.50);
   }
+  if ( xmax > xmin ) ph2->GetXaxis()->SetRangeUser(xmin, xmax);
   ph2->Draw("colz");
   gPad->Update();
   return 0;

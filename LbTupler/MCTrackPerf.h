@@ -23,25 +23,32 @@ class MCTrackPerf {
 
 public:
 
+  typedef unsigned int Channel;
+  typedef int Tick;
+  typedef double Signal;
+
+public:
+
   struct Hit {
-    unsigned int tick1;
-    unsigned int tick2;
-    double charge;
+    Tick tick1;
+    Tick tick2;
+    Signal signal;
     Hit();
-    Hit(unsigned int atick1, unsigned int atick2, double acharge);
+    Hit(unsigned int atick1, unsigned int atick2, double asignal);
   };
 
 public:
 
   // Value used for an invalid or undefined channel or tick.
-  static unsigned int badIndex();
+  static Channel badChannel();
+  static Tick badTick();
 
 public:
 
-  typedef std::map<unsigned int, double> TickMap;
-  typedef std::map<unsigned int, TickMap> TickChannelMap;
+  typedef std::map<Tick, double> TickMap;
+  typedef std::map<Channel, TickMap> TickChannelMap;
   typedef std::vector<Hit> HitVector;
-  typedef std::map<unsigned int, HitVector> HitChannelMap;
+  typedef std::map<Channel, HitVector> HitChannelMap;
 
   // Default ctor.
   MCTrackPerf();
@@ -50,7 +57,7 @@ public:
   MCTrackPerf(const simb::MCParticle& par);
 
   // Add an energy deposit in a bin.
-  int add(unsigned int chan, unsigned int tick, double signal);
+  int addSignal(Channel chan, Tick tick, Signal signal);
 
   // Add contributions from a SimChannel.
   int addSimChannel(const sim::SimChannel& sch);
@@ -63,17 +70,24 @@ public:
   unsigned int trackID() const;
   int pdg() const;
   int rpdg() const;
-  const TickChannelMap& tickChargeMap() const;
-  const HitChannelMap& hitChargeMap() const;
+  const TickChannelMap& tickSignalMap() const;
+  const HitChannelMap& hitSignalMap() const;
 
   // Range of data.
-  unsigned int channelMin() const;
-  unsigned int channelMax() const;
-  unsigned int tickMin() const;
-  unsigned int tickMax() const;
+  Channel channelMin() const;
+  Channel channelMax() const;
+  Tick tickMin() const;
+  Tick tickMax() const;
 
   // The size is the number of included channel-tick bins.
   unsigned int size() const;
+
+  // The number of included channels.
+  unsigned int channelCount() const;
+
+  // Return the total signal in the channel.
+  Signal tickSignal() const;
+  Signal hitSignal() const;
 
   // Output stream.
   //   out - stream to insert output
@@ -93,10 +107,10 @@ private:
   int m_trackID;
   int m_pdg;
   int m_rpdg;
-  TickChannelMap m_tickchg;  // m_tickchg[chan][tick] is the charge for (chan, tick)
-  HitChannelMap m_hitchg;    // m_hitchg[chan][tick] is the charge for (chan, hit)
-  unsigned int m_tickMin;
-  unsigned int m_tickMax;
+  TickChannelMap m_ticksig;  // m_ticksig[chan][tick] is the signal for (chan, tick)
+  HitChannelMap m_hitsig;    // m_hitsig[chan][hit] is the hit for (chan, hit number)
+  Tick m_tickMin;
+  Tick m_tickMax;
 
 };
 

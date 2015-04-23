@@ -89,7 +89,7 @@ physics:
       DoMCParticles:  true
       DoMCTrackPerf:  true
       DoSimChannels:  true
-      DoRaw:          false
+      DoRaw:          true
       DoWires:        false
       DoHits:         false
       DoClusters:     true

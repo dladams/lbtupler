@@ -1,6 +1,10 @@
 {
   TFile* pfile = TFile::Open("LbTupler.root");
-  LbTupler->cd();
+  if ( pfile == 0 || ! pfile.IsOpen() ) {
+    cout << "Input file not found." << endl;
+  } else {
+    LbTupler->cd();
+  }
   //gROOT->ProcessLine(".L palette.C");
   gROOT->ProcessLine(".L palette.cxx+");
   gROOT->ProcessLine(".L gettrees.cxx+");

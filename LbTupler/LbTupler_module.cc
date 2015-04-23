@@ -84,7 +84,7 @@ public:
   unsigned int rop;            // Global readout plane index.
   unsigned int channel;        // Global channel.
   unsigned int ropchannel;     // Channel in the readout plane.
-  double tick;                 // TDC tick.
+  double tick;                 // TDC tick float (t + x/v_drift)/t_bin
   int itick;                   // TDC tick.
   bool valid;                  // True if this is a valid plane position
   PlanePosition() : plane(0), rop(0), channel(0), ropchannel(0), tick(0), valid(false) { }
@@ -719,16 +719,18 @@ void LbTupler::analyze(const art::Event& event) {
       int rpdg = reducedPDG(particle.PdgCode());
       int proc = intProcess(particle.Process());
       // Select particles.
-      if ( proc == 0 && rpdg < 5 ) {
+      // 21apr2015: Keep also gammas
+      if ( proc == 0 && rpdg < 7 ) {
         if ( dbg > 1 ) cout << myname << "Selecting";
         selectedMCTrackPerfsMC.push_back(MCTrackPerf(*&particle));
         selectedMCTrackPerfsSC.push_back(MCTrackPerf(*&particle));
       } else {
         if ( dbg > 1 ) cout << myname << "Rejecting";
       }
-      if ( dbg > 1 ) cout << " MC particle " << setw(4) << trackid 
+      if ( dbg > 1 ) cout << " MC particle " << setw(6) << trackid 
                           << " with RPDG=" << setw(2) << rpdg
                           << " and PROC=" << setw(2) << proc
+                          << " and PDG=" << setw(10) << particle.PdgCode()
                           << endl;
     }
   }  // end DoMCTrackPerf
@@ -883,6 +885,7 @@ void LbTupler::analyze(const art::Event& event) {
                  << " The remainder will be skipped." << endl;
             break;
           }
+          bool lastpoint = (ipt+1 == numberTrajectoryPoints);
           const auto& pos = particle.Position(ipt);
           const auto& mom = particle.Momentum(ipt);
           fptx[ipt] = pos.X();
@@ -952,8 +955,11 @@ void LbTupler::analyze(const art::Event& event) {
             }
           }
           if ( fdbg > 3 ) cout << myname << "  MC Particle " << ftrackid
-                               << " trajectory point " << fnpt << ": ("
-                               << x << ", " << y << ", " << z << ", " << t << ")" << endl;
+                               << " point " << fnpt << ": xyzt=("
+                               << x << ", " << y << ", " << z << ", " << t << ")"
+                               << ", E=" << 1000*e << " MeV"
+                               << ", TPC=" << tpcid.TPC
+                               << endl;
           if ( ipt ) {
             if ( !indet0 && indet ) ++fndetin;
             if ( indet0 && !indet ) ++fndetout;
@@ -989,6 +995,9 @@ void LbTupler::analyze(const art::Event& event) {
                 cout << endl;
               }
             }
+            if ( lastpoint && fdbg > 3 ) {
+              cout << myname << "    Last trajectory point; # children is " << fnchild << endl; 
+            }
           }
           // Fill time-channel histogram with dE for each pair of adjacent tracjectory points.
           // Increase the number of points to ensure granularity less than fmcpdsmax;
@@ -1000,7 +1009,7 @@ void LbTupler::analyze(const art::Event& event) {
             double ds = sqrt(dx*dx + dy*dy + dz*dz);
             unsigned int nstep = ds/fmcpdsmax + 1;
             double invstep = 1.0/nstep;
-            double de = invstep*detot;
+            double destep = invstep*detot;
             if ( fdbg > 3 ) cout << myname << "    # steps: " << nstep << endl;
             for ( unsigned int istp=0; istp<nstep; ++istp ) {
               double xa = x0 + (istp+0.5)*invstep*dx;
@@ -1016,12 +1025,12 @@ void LbTupler::analyze(const art::Event& event) {
                   cout << myname << "    Filling " << ph->GetName()
                        << ": tick=" << pp.tick
                        << ", chan=" << pp.ropchannel
-                       << ", DE=" << de << " MeV" << endl;
+                       << ", DE=" << destep << " MeV" << endl;
                 }
-                ph->Fill(pp.tick, pp.ropchannel, de);
+                ph->Fill(pp.tick, pp.ropchannel, destep);
                 if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
                 if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
-                if ( pmctp != nullptr ) pmctp->add(pp.channel, pp.tick, de);
+                if ( pmctp != nullptr ) pmctp->addSignal(pp.channel, pp.tick, destep);
               }
             }
             // If this and the last point are in the detector, increment the detector path length.
@@ -1136,8 +1145,8 @@ void LbTupler::analyze(const art::Event& event) {
         // variables and arrays we want to write to the
         // n-tuple. The following command actually writes those
         // values.
-        fSimulationNtuple->Fill();
       } // if selected
+      fSimulationNtuple->Fill();
     } // end loop over all particles in the event. 
     if ( dbg > 2 ) {
       cout << myname << "Tree " << fSimulationNtuple->GetName()
@@ -1206,8 +1215,10 @@ void LbTupler::analyze(const art::Event& event) {
       }
       // Fetch the histogram for the current ROP.
       TH2* psphist = sphists[irop];
-      if ( dbg > 3 ) cout << myname << " " << fscCount << ": Sim channel=" << ichan
-                          << ", ROP=" << irop << ", ROP channel=" << iropchan << endl;
+      if ( dbg > 3 ) cout << myname << "SimChannel " << setw(4) << fscCount
+                          << ": ROP " << setw(2) << irop
+                          << ", Global/ROP channel " << setw(4) << ichan
+                          << "/" << setw(3) << iropchan;
       if ( fscCount < fscCapacity ) {
         fscChannel[fscCount] = ichan;
         auto const& idemap = simchan.TDCIDEMap();
@@ -1227,7 +1238,6 @@ void LbTupler::analyze(const art::Event& event) {
           unsigned int tdcNide = idevec.size();
           // Sum over the tracks contributing to this channel sample.
           for ( auto& ide : idevec ) {
-if ( dbg > 3 ) cout << "SimChannel TrackID: " << ide.trackID << endl;
             tdcEnergy += ide.energy;
             tdcCharge += ide.numElectrons;
           }
@@ -1244,13 +1254,19 @@ if ( dbg > 3 ) cout << "SimChannel TrackID: " << ide.trackID << endl;
           energytdc += tdcEnergy*tdc;
           // Fill the histogram.
           psphist->Fill(tdc, iropchan, tdcEnergy);
-          if ( dbg > 3 ) cout << myname << psphist->GetName()
-                              << ": TPCP/ROP channel " << ichan << "/" << iropchan
+          if ( dbg > 4 ) cout << "\n" << myname << "    " << psphist->GetName()
+                              << ": Global/ROP channel " << setw(4) << ichan
+                              << "/" << setw(3) << iropchan
                               << ", tdc " << tdc
-                              << " has " << int(100.0*tdcEnergy+0.4999)/100.0 << " MeV" << endl;
+                              << " has " << int(100.0*tdcEnergy+0.4999)/100.0 << " MeV";
         }
-        if ( dbg > 3 ) cout << myname << "  Deposited energy, charge: "
-          << energy << ", " << charge << endl;
+        if ( dbg > 3 ) {
+          if ( dbg > 4 ) cout << "\n" << myname << "    Total ";
+          else cout << ": ";
+          double ren = 0.01*int(100.0*energy+0.49999);
+          double rchg = int(charge+0.499999);
+          cout << "E=" << ren << " MeV; Q=" << rchg << endl;
+        }
         fscEnergy[fscCount] = energy;
         fscCharge[fscCount] = charge;
         fscTdcPeak[fscCount] = tdcPeak;
@@ -1267,29 +1283,44 @@ if ( dbg > 3 ) cout << "SimChannel TrackID: " << ide.trackID << endl;
     fSimChannelNtuple->Fill();
   }  // end DoSimChannel
 
+  // Add sim channel info to the sim channel performance objects.
   if ( fDoMCTrackPerf ) {
     if ( dbg > 0 ) cout << myname << "Selected MC track list with SimChannel fill (size = "
                         << selectedMCTrackPerfsSC.size() << ")" << endl;
     for ( auto& mctrackperf : selectedMCTrackPerfsSC ) {
       // Add the sim channel info to the selected tracks.
       for ( auto const& simchan : (*simChannelHandle) ) {
-        auto const& idemap = simchan.TDCIDEMap();
-        //for ( auto const& ideent : idemap ) {
-        //  auto idevec = ideent.second;
-        //  for ( auto& ide : idevec ) {
-        //    cout << myname << "IDE trackID=" << ide.trackID << ", energy=" << ide.energy << endl;
-        //  }
-        //}
         mctrackperf.addSimChannel(*&simchan);
       }  // End loop over sim channels in the event. 
-      if ( dbg > 4 ) {
-        cout << "Dumping MCTrackPerf channels:" << endl;
-        mctrackperf.print(cout, 1, myname + "  ");
+    }  // End loop over selected SimChannel MC tracks
+  }  // end DoMCTrackPerf
+
+  // Add hits to the sim channel performance objects.
+  if ( fDoMCTrackPerf ) {
+    for ( auto& mctrackperf : selectedMCTrackPerfsSC ) mctrackperf.buildHits();
+    for ( auto& mctrackperf : selectedMCTrackPerfsMC ) mctrackperf.buildHits();
+  }
+
+  // Display the MC tracks.
+  if ( fDoMCTrackPerf && dbg > 3 ) {
+    for ( unsigned int imcs=0; imcs<selectedMCTrackPerfsSC.size(); ++imcs ) {
+      const auto mctsc = selectedMCTrackPerfsSC.at(imcs);
+      const auto mctmc = selectedMCTrackPerfsMC.at(imcs);
+      if ( dbg > 3 ) {
+        cout << myname << "Dumping MCTrackPerf sim channels for event " << fevent
+             << " track " << mctsc.trackID()
+             << "\n" << myname << "  Total tick/hit signal: "
+             << mctsc.tickSignal() << "/" << mctsc.hitSignal() << " MeV:" << endl;
+        mctsc.print(cout, 1, myname + "  ");
+        mctsc.print(cout, 2, myname + "  ");
+        mctsc.print(cout, 3, myname + "  ");
       }
       if ( dbg > 3 ) {
-        cout << "Dumping MCTrackPerf hits:" << endl;
-        mctrackperf.buildHits();
-        mctrackperf.print(cout, 2, myname + "  ");
+        cout << myname << "Dumping MCTrackPerf MC hits for event " << fevent
+             << " track " << mctmc.trackID()
+             << "\n" << myname << "  Total tick/hit signal: "
+             << mctmc.tickSignal() << "/" << mctmc.hitSignal() << " MeV:" << endl;
+        mctmc.print(cout, 1, myname + "  ");
       }
     }  // End loop over selected MC tracks
   }  // end DoMCTrackPerf
@@ -1596,7 +1627,7 @@ PlanePositionVector LbTupler::planePositions(const double postim[]) const {
     pp.rop = irop;
     pp.channel = ichan;
     pp.tick = tick;
-    pp.itick = tick;
+    pp.itick = itick;
     pp.ropchannel = iropchan;
     pp.valid = true;
     pps.push_back(pp);
