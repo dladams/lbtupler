@@ -1,0 +1,3 @@
+#include "LbTupler.fcl"
+
+physics.analyzers.LbTupler.DoRaw: false
