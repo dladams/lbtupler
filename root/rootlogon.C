@@ -1,5 +1,5 @@
 {
-  TFile* pfile = TFile::Open("LbTupler.root");
+  TFile* pfile = TFile::Open("../run/LbTupler.root");
   if ( pfile == 0 || ! pfile.IsOpen() ) {
     cout << "Input file not found." << endl;
   } else {

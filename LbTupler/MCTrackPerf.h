@@ -5,17 +5,11 @@
 // 2. Loop over SimHits to find the charge in each channel-tick bin.
 // 3. Find the closest cluster for each MC track.
 
-#include <string>
-#include <vector>
-#include <map>
-#include <iostream>
+#include "ChannelHits.h"
 namespace simb {
 class MCParticle;
 }
 namespace sim {
-class SimChannel;
-}
-namespace recob {
 class Cluster;
 }
 
@@ -23,32 +17,11 @@ class MCTrackPerf {
 
 public:
 
-  typedef unsigned int Channel;
-  typedef int Tick;
-  typedef double Signal;
+  typedef ChannelHits::Channel Channel;
+  typedef ChannelHits::Tick    Tick;
+  typedef ChannelHits::Signal  Signal;
 
 public:
-
-  struct Hit {
-    Tick tick1;
-    Tick tick2;
-    Signal signal;
-    Hit();
-    Hit(unsigned int atick1, unsigned int atick2, double asignal);
-  };
-
-public:
-
-  // Value used for an invalid or undefined channel or tick.
-  static Channel badChannel();
-  static Tick badTick();
-
-public:
-
-  typedef std::map<Tick, double> TickMap;
-  typedef std::map<Channel, TickMap> TickChannelMap;
-  typedef std::vector<Hit> HitVector;
-  typedef std::map<Channel, HitVector> HitChannelMap;
 
   // Default ctor.
   MCTrackPerf();
@@ -70,30 +43,14 @@ public:
   unsigned int trackID() const;
   int pdg() const;
   int rpdg() const;
-  const TickChannelMap& tickSignalMap() const;
-  const HitChannelMap& hitSignalMap() const;
-
-  // Range of data.
-  Channel channelMin() const;
-  Channel channelMax() const;
-  Tick tickMin() const;
-  Tick tickMax() const;
-
-  // The size is the number of included channel-tick bins.
-  unsigned int size() const;
-
-  // The number of included channels.
-  unsigned int channelCount() const;
-
-  // Return the total signal in the channel.
-  Signal tickSignal() const;
-  Signal hitSignal() const;
+  const ChannelHits& hits() const;
 
   // Output stream.
   //   out - stream to insert output
-  //   detail - 0 = no printing
-  //            1 = single line
-  //            2 = line for each channel
+  //   detail - 0 = single line
+  //            1 = line for each channel
+  //            2 = line for each hit
+  //            3 = line for each tick
   std::ostream& print(std::ostream& out, int detail =1, std::string prefix ="") const;
 
   // Fill a Channel vs. tick histogram.
@@ -107,10 +64,7 @@ private:
   int m_trackID;
   int m_pdg;
   int m_rpdg;
-  TickChannelMap m_ticksig;  // m_ticksig[chan][tick] is the signal for (chan, tick)
-  HitChannelMap m_hitsig;    // m_hitsig[chan][hit] is the hit for (chan, hit number)
-  Tick m_tickMin;
-  Tick m_tickMax;
+  ChannelHits m_hits;
 
 };
 

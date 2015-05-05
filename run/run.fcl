@@ -1,3 +1,7 @@
 #include "LbTupler.fcl"
 
-physics.analyzers.LbTupler.DoRaw: false
+physics.analyzers.LbTupler.DebugLevel: 1
+
+physics.analyzers.LbTupler.DoRaw: true
+
+physics.analyzers.LbTupler.TdcTickMax: 3200

@@ -1,29 +1,39 @@
 #!/bin/sh
 
+if [ "$1" = "-h" ]; then
+  echo Usage: $0 ISAMPLE NSKIP NEVT DBG
+  exit 0
+fi
+
 ARG=1
 if [ -n "$1" ]; then ARG=$1; fi
-NEVT=10
-if [ -n "$2" ]; then NEVT=$2; fi
+NSKIP=0
+if [ -n "$2" ]; then NSKIP=$2; fi
+NEVT=1
+if [ -n "$3" ]; then NEVT=$3; fi
 GDB=
-if [ -n "$3" ]; then GDB=$2; fi
-
+if [ -n "$4" ]; then GDB=$2; fi
 
 AFCL="-c LbTupler.fcl"
 AFCL="-c run.fcl"
 
+# Location for data files.
 DATADIR=/lbne/app/users/dladams/data
+if [ `hostname` = atlassw9.phy.bnl.gov ]; then
+  DATADIR=/home/dladams/lbne/data
+fi
+
 if [ $ARG -eq 0 ]; then
-  FILE="../run01/single35t_gen.root"
+  FILE="../prod/single35t_gen.root"
 else if [ $ARG -eq 1 ]; then
-  FILE="../run01b/single35t_hits.root"
+  FILE="../prod/single35t_hits.root"
 else if [ $ARG -eq 2 ]; then
   FILE=$DATADIR/AntiMuonCutEvents_LSU_lbne35t_31_20150220T200710_gen_20150220T205417_g4_20150220T210305_detsim_20150220T212153_reco.root
 else if [ $ARG -eq 3 ]; then
   FILE=$DATADIR/prodcosmics_lbne35t_milliblock_1_20150220T201346_gen_20150220T213621_g4_20150220T234543_detsim_milliblock_20150223T214501_reco_milliblock.root
 fi; fi; fi; fi
 
-ARGS="-n $NEVT $AFCL $FILE"
-echo "$ARGS"
+ARGS="-n $NEVT --nskip $NSKIP $AFCL $FILE"
 
 if [ -n "$GDB" ]; then
   EXE=`which lar`

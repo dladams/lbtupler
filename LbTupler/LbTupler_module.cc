@@ -71,6 +71,12 @@ using std::set;
 using std::sqrt;
 using geo::WireID;
 using geo::PlaneID;
+using geo::View_t;
+using geo::kU;
+using geo::kV;
+using geo::kZ;
+
+#include "GeoHelper.h"
 
 namespace LbTupler {
 
@@ -123,7 +129,7 @@ public:
   void analyze (const art::Event& evt); 
 
   // Find the ROP for a given channel.
-  // Returns fnrop if channel is invalid.
+  // Returns nrop if channel is invalid.
   unsigned int channelRop(unsigned int ichan) const;
 
   // Return the ADC-to-energy conversion factor for a channel.
@@ -154,7 +160,7 @@ private:
   string fHitProducerLabel;        // The name of the producer that created hits
   string fWireProducerLabel;       // The name of the producer that created wires
   string fClusterProducerLabel;    // The name of the producer that created clusters
-  string fRawDigitLabel;           // The name of the producer that created the raw digits.
+  string fRawDigitProducerLabel;   // The name of the producer that created the raw digits.
   int fSelectedPDG;                     // PDG code of particle we'll focus on
   double fBinSize;                      // For dE/dx work: the value of dx. 
 
@@ -200,6 +206,9 @@ private:
   unsigned int fnpt;     // # points in trajectory
   unsigned int fnptdet;  // # trajectory points in any TPC
   unsigned int fnptcry;  // # trajectory points in any cryostat
+  unsigned int fntpc;    // # TPC
+  unsigned int fnapa;    // Total # APA
+  unsigned int fnrop;    // Total # readout planes (ROPs)
   vector<int> fnpttpc;   // # trajectory point in each TPC
   vector<int> fnptapa;   // # trajectory point in each APA
   vector<int> fnptrop;   // # trajectory point in each ROP
@@ -261,27 +270,20 @@ private:
   vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
 
   // Geometry service.
+  GeoHelper* fgeohelp;
   art::ServiceHandle<geo::Geometry> fGeometry;       // pointer to Geometry service
 
+/*
   // Geometry information.
-  unsigned int fncryo;          // # cryostats
-  unsigned int fntpc;           // # TPC
-  unsigned int fntpp;           // Total # TPC planes
-  vector<int> fntpcplane;       // # planes in each TPC
-  vector<int> fntpcplanewire;   // # wires in each plane
-  vector<string> ftpcname;      // Names for the TPCs.
-  vector<unsigned int> ftpcapa; // APA for each TPC.
-  vector<string> fplanename;    // Names for the TPC planes.
-  unsigned int fnrop;           // Total # readout planes (ROPs)
   vector<int> fropfirstchan;    // first channel for each readout plane
   vector<int> fropnchan;        // # channels for each readout plane
   vector<int> froptpc;          // First TPC for each readout plane
   vector<int> fropapa;          // the APA for each readout plane
   vector<string> fropname;      // Names for the TPC readout planes, e.g. rop1x1.
   vector<string> froporient;    // Wire orientation for each ROP plane: u, v or z.
-  unsigned int fnapa;           // Total # APA
   vector<int> fapanrop;         // # ROP for each APA.
   map<PlaneID, unsigned int> ftpcplanerop; // # ROP for each TPC plane.
+*/
 
   // LArProperties service (for drift speed)
   art::ServiceHandle<util::DetectorProperties> fdetprop;
@@ -303,7 +305,7 @@ private:
 
 // Constructor
 LbTupler::LbTupler(fhicl::ParameterSet const& parameterSet)
-: EDAnalyzer(parameterSet), fdbg(0) {
+: EDAnalyzer(parameterSet), fdbg(0), fgeohelp(0) {
   // Read in the parameters from the .fcl file.
   this->reconfigure(parameterSet);
 }
@@ -318,125 +320,36 @@ LbTupler::~LbTupler() { }
 void LbTupler::beginJob() {
   const string myname = "LbTupler::beginJob: ";
 
+  if ( fgeohelp == nullptr ) {
+    cout << myname << "ERROR: Geometry helper is absent." << endl;
+    return;
+  }
+  const GeoHelper& geohelp = *fgeohelp;
+
   // Access ART's TFileService, which will handle creating and writing
   // histograms and n-tuples for us. 
   art::ServiceHandle<art::TFileService> tfs;
 
   // Fetch geometry.
-  fncryo = fGeometry->Ncryostats();
-  fntpc = fGeometry->NTPC();
-  int ntpcchan = fGeometry->Nchannels();
-  vector<int> firsttpcplanewire;
-  firsttpcplanewire.push_back(0);
-  int icry = 0;
-  fntpp = 0;
-  // Loop over TPCs.
-  for ( unsigned int itpc=0; itpc<fntpc; ++itpc ) {
-    int nplane = fGeometry->Nplanes(itpc, icry);
-    ostringstream sstpc;
-    sstpc << "TPC" << itpc;
-    string tpcname = sstpc.str();
-    fntpcplane.push_back(nplane);
-    ftpcname.push_back(tpcname);
-    int itdcrop = 0;   // # readouts for this TDC
-    // Find the APA for this channel. The geometry does support this and so
-    // we assign APA number based on TPC number.
-    unsigned int iapa = itpc/2;
-    ftpcapa.push_back(iapa);
-    // Loop over planes in the TPC.
-    for ( int ipla=0; ipla<nplane; ++ipla ) {
-      int nwire = fGeometry->Nwires(ipla, itpc, icry);
-      fntpcplanewire.push_back(nwire);
-      ostringstream ssplane;
-      ssplane << tpcname << "Plane" << ipla;
-      string planename = ssplane.str();
-      fplanename.push_back(planename);
-      int firstwire = firsttpcplanewire[fntpp];
-      int lastwire = firstwire + nwire - 1;
-      if ( itpc<fntpc-1 || ipla<nplane-1 ) {
-        firsttpcplanewire.push_back(lastwire + 1);
-      }
-      // Loop over wires and find the channels.
-      set<int> chans;
-      //for ( int iwir=firstwire; iwir<=lastwire; ++iwir ) {
-      for ( int iwir=0; iwir<nwire; ++iwir ) {
-        int icha = fGeometry->PlaneWireToChannel(ipla, iwir, itpc, icry);
-        chans.insert(icha);
-      }
-      int nchan = chans.size();
-      int firstchan = -1;
-      int lastchan = -1;
-      if ( nchan ) {
-        firstchan = *chans.cbegin();
-        lastchan = *chans.crbegin();
-      }
-      if ( lastchan <= firstchan ) {
-        cout << myname << "ERROR: Invalid channel range." << endl;
-        abort();
-      }
-      if ( fdbg > 0 ) {
-        if ( fntpp == 0 ) cout << myname << "TPC wires:" << endl;
-        cout << myname << planename <<  " has " << nwire
-             << " wires: [" << setw(4) << firstwire << "," << setw(4) << lastwire << "]"
-             << " and " << nchan << "/" << lastchan - firstchan + 1 << " channels: ["
-             << setw(4) << firstchan << "," << setw(4) << lastchan << "]" << endl;
-      }
-      // Check if the range for the current readout plane (ROP) is already covered.
-      unsigned int irop = fnrop;
-      for ( irop=0; irop<fnrop; ++irop ) {
-        int ropfirst = fropfirstchan[irop];
-        int roplast = ropfirst + fropnchan[irop] - 1;
-        if ( firstchan > roplast ) continue;               // New range is after the ROP
-        if ( lastchan < ropfirst ) continue;               // New range is before the ROP
-        if ( firstchan==ropfirst && lastchan==roplast ) break;  // Exact match
-        // We could extend the range here but current geometry does not require this.
-        cout << myname << "ERROR: Invalid channel range overlap." << endl;
-        abort();
-      }
-      // If this is a new ROP, then record its channel range and TPC, and assign it to
-      // an APA. For now, the latter assumes APA ordering follows TPC and is
-      if ( irop == fnrop ) {  // We have a new readout plane.
-        for ( unsigned int japa=fnapa; japa<=iapa; ++japa ) {
-          fapanrop.push_back(0);
-          ++fnapa;
-        }
-        ++fapanrop[iapa];
-        fropfirstchan.push_back(firstchan);
-        fropnchan.push_back(lastchan - firstchan + 1 );
-        froptpc.push_back(itpc);
-        fropapa.push_back(iapa);
-        ostringstream ssrop;
-        const vector<string> pnames = {"u", "v", "z1", "z2", "a", "b", "c", "d", "e"};
-        const vector<string> orients = {"u", "v", "z", "z", "", "", "", "" };
-        ssrop << "apa" << iapa << pnames[fapanrop[iapa]-1];
-        fropname.push_back(ssrop.str());
-        froporient.push_back(orients[fapanrop[iapa]-1]);
-        ++fnrop;
-        ++itdcrop;
-      }
-      // Add this TPC plane to the TPC-plane-to-ROP map.
-      ftpcplanerop[PlaneID(icry,itpc,ipla)] = irop;
-      ++fntpp;
-    }
-  }
+  fntpc = geohelp.ntpc();
+  unsigned int icry = 0;
   if ( fdbg > 0 ) {
-    cout << myname << "        Total # cryostats: " << fncryo << endl;
-    cout << myname << "             Total # TPCs: " << fntpc << endl;
-    cout << myname << "     Total # TPC channels: " << ntpcchan << endl;
+    cout << myname << "             Total # TPCs: " << geohelp.ntpc() << endl;
+    cout << myname << "     Total # TPC channels: " << fGeometry->Nchannels() << endl;
     cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
     cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
     cout << myname << endl;
-    cout << myname << "There are " << fntpc << " TPCs:" << endl;
+    cout << myname << "There are " << geohelp.ntpc() << " TPCs:" << endl;
     cout << myname << "      name       APA" << endl;
-    for ( unsigned int itpc=0; itpc<fntpc; ++itpc ) {
-      cout << myname << setw(10) << ftpcname[itpc] << setw(10) << ftpcapa[itpc] << endl;
+    for ( unsigned int itpc=0; itpc<geohelp.ntpc(); ++itpc ) {
+      cout << myname << setw(10) << geohelp.tpcName(itpc) << setw(10) << geohelp.tpcApa(itpc) << endl;
     }
     cout << myname << endl;
-    cout << myname << "There are " << fnrop << " ROPs (readout planes):" << endl;
+    cout << myname << "There are " << geohelp.nrop() << " ROPs (readout planes):" << endl;
     cout << myname << "      name  1st chan     #chan  orient" << endl;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      cout << myname << setw(10) << fropname[irop] << setw(10) << fropfirstchan[irop]
-           << setw(10) << fropnchan[irop] << setw(8) << froporient[irop] << endl;
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      cout << myname << setw(10) << geohelp.ropName(irop) << setw(10) << geohelp.ropFirstChannel(irop)
+           << setw(10) << geohelp.ropNChannel(irop) << setw(8) << geohelp.ropView(irop) << endl;
     }
   }
   double detLength = fGeometry->DetLength(); 
@@ -519,9 +432,9 @@ void LbTupler::beginJob() {
   fSimChannelNtuple     = tfs->make<TTree>("LbTuplerSimChannel","LbTuplerSimChannel");
 
   // Set array sizes.
-  fnpttpc.resize(fntpc);
-  fnptapa.resize(fnapa);
-  fnptrop.resize(fnrop);
+  fnpttpc.resize(geohelp.ntpc());
+  fnptapa.resize(geohelp.napa());
+  fnptrop.resize(geohelp.nrop());
 
   // Define the branches (columns) of our simulation n-tuple. When
   // we write a variable, we give the address of the variable to
@@ -623,7 +536,8 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
 
 //************************************************************************
 
-  void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
+void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
+  const string myname = "LbTupler::reconfigure: ";
   // Read parameters from the .fcl file. The names in the arguments
   // to p.get<TYPE> must match names in the .fcl file.
   fdbg                     = p.get<int>        ("DebugLevel");
@@ -638,7 +552,7 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
   fTruthProducerLabel      = p.get<string>("TruthLabel");
   fParticleProducerLabel   = p.get<string>("ParticleLabel");
   fSimulationProducerLabel = p.get<string>("SimulationLabel");
-  fRawDigitLabel           = p.get<string>("RawDigitLabel");
+  fRawDigitProducerLabel   = p.get<string>("RawDigitLabel");
   fHitProducerLabel        = p.get<string>("HitLabel");
   fWireProducerLabel       = p.get<string>("WireLabel");
   fClusterProducerLabel    = p.get<string>("ClusterLabel");
@@ -653,18 +567,64 @@ void LbTupler::beginRun(const art::Run& /*run*/) {
   fadcmevz                 = p.get<double>("AdcToMeVConversionZ");
   fdemax                   = p.get<double>("HistDEMax");
   fhistusede               = p.get<bool>("HistUseDE");
+  string sep = ": ";
+  int wlab = 20;
+  if ( fdbg > 0 ) {
+    string prefix = myname + "  ";
+    cout << myname << setw(wlab) << "Module properties:" << endl;
+    cout << prefix << setw(wlab) << "DebugLevel" << sep << fdbg << endl;
+    cout << prefix << setw(wlab) << "DoMCParticles" << sep << fDoMCParticles << endl;
+    cout << prefix << setw(wlab) << "DoMCTrackPerf" << sep << fDoMCTrackPerf << endl;
+    cout << prefix << setw(wlab) << "DoSimChannels" << sep << fDoSimChannels << endl;
+    cout << prefix << setw(wlab) << "DoRaw" << sep << fDoRaw << endl;
+    cout << prefix << setw(wlab) << "DoWires" << sep << fDoWires << endl;
+    cout << prefix << setw(wlab) << "DoHits" << sep << fDoHits << endl;
+    cout << prefix << setw(wlab) << "DoClusters" << sep << fDoClusters << endl;
+    cout << prefix << setw(wlab) << "TruthLabel" << sep << fTruthProducerLabel << endl;
+    cout << prefix << setw(wlab) << "ParticleLabel" << sep << fParticleProducerLabel << endl;
+    cout << prefix << setw(wlab) << "SimulationLabel" << sep << fSimulationProducerLabel << endl;
+    cout << prefix << setw(wlab) << "RawDigitLabel" << sep << fRawDigitProducerLabel << endl;
+    cout << prefix << setw(wlab) << "HitLabel" << sep << fHitProducerLabel << endl;
+    cout << prefix << setw(wlab) << "WireLabel" << sep << fWireProducerLabel << endl;
+    cout << prefix << setw(wlab) << "ClusterLabel" << sep << fClusterProducerLabel << endl;
+    cout << prefix << setw(wlab) << "PDGcode" << sep << fSelectedPDG << endl;
+    cout << prefix << setw(wlab) << "BinSize" << sep << fBinSize << endl;
+    cout << prefix << setw(wlab) << "SimChannelSize" << sep << fscCapacity << endl;
+    cout << prefix << setw(wlab) << "TdcTickMin" << sep << ftdcTickMin << endl;
+    cout << prefix << setw(wlab) << "TdcTickMax" << sep << ftdcTickMax << endl;
+    cout << prefix << setw(wlab) << "McParticleDsMax" << sep << fmcpdsmax << endl;
+    cout << prefix << setw(wlab) << "AdcToMeVConversionU" << sep << fadcmevu << endl;
+    cout << prefix << setw(wlab) << "AdcToMeVConversionV" << sep << fadcmevv << endl;
+    cout << prefix << setw(wlab) << "AdcToMeVConversionZ" << sep << fadcmevz << endl;
+    cout << prefix << setw(wlab) << "HistDEMax" << sep << fdemax << endl;
+    cout << prefix << setw(wlab) << "HistUseDE" << sep << fhistusede << endl;
+  }
+
+  cout << myname << endl;
+  cout << myname << "Summary from geometry helper:" << endl;
+  fgeohelp = new GeoHelper(&*fGeometry, &*fdetprop, 4);
+  fgeohelp->print(cout, 0, myname);
+  fnrop = fgeohelp->nrop();
   return;
 }
 
 //************************************************************************
 
 void LbTupler::analyze(const art::Event& event) {
+  const string myname = "LbTupler::analyze: ";
+  int dbg = fdbg;
+
   // Access ART's TFileService, which will handle creating and writing
   // histograms and n-tuples for us. 
   art::ServiceHandle<art::TFileService> tfs;
 
-  int dbg = fdbg;
-  const string myname = "LbTupler::analyze: ";
+  // Check gemetry helper.
+  if ( fgeohelp == nullptr ) {
+    cout << myname << "ERROR: Geometry helper is absent." << endl;
+    return;
+  }
+  const GeoHelper& geohelp = *fgeohelp;
+
   // Start by fetching some basic event information for our n-tuple.
   fevent  = event.id().event(); 
   fRun    = event.run();
@@ -740,11 +700,11 @@ void LbTupler::analyze(const art::Event& event) {
 
     // Create the event MC particle histograms.
     vector<TH2*> mcphists;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      int nchan = fropnchan[irop];
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
       int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "mcp" + fropname[irop];
-      string title = "MC particles for " + fropname[irop] + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
+      string hname = "h" + sevtf + "mcp" + geohelp.ropName(irop);
+      string title = "MC particles for " + geohelp.ropName(irop) + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
       if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
@@ -920,7 +880,7 @@ void LbTupler::analyze(const art::Event& event) {
           } else {
             indet = true;
             unsigned int itpc = tpcid.TPC;
-            unsigned int iapa = ftpcapa[itpc];
+            unsigned int iapa = geohelp.tpcApa(itpc);
             fpttpc[ipt] = itpc;
             fptapa[ipt] = iapa;
             if ( fnptdet == 0 ) {
@@ -940,15 +900,15 @@ void LbTupler::analyze(const art::Event& event) {
             }
             for ( const auto& pp : pps ) {
               unsigned int irop = pp.rop;
-              string orient = froporient[irop];
+              View_t orient = geohelp.ropView(irop);
               ++fnptrop[irop];
-              if ( orient == "u" ) {
+              if ( orient == kU ) {
                 fptuchan[ipt] = pp.ropchannel;
                 fptutick[ipt] = pp.tick;
-              } else if ( orient == "v" ) {
+              } else if ( orient == kV ) {
                 fptvchan[ipt] = pp.ropchannel;
                 fptvtick[ipt] = pp.tick;
-              } else if ( orient == "z" ) {
+              } else if ( orient == kZ ) {
                 fptzchan[ipt] = pp.ropchannel;
                 fptztick[ipt] = pp.tick;
               }
@@ -1179,11 +1139,11 @@ void LbTupler::analyze(const art::Event& event) {
 
     // Create the Sim channel histograms.
     vector<TH2*> sphists;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      int nchan = fropnchan[irop];
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
       int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "sim" + fropname[irop];
-      string title = "Sim channels for TPC plane " + fropname[irop] + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
+      string hname = "h" + sevtf + "sim" + geohelp.ropName(irop);
+      string title = "Sim channels for TPC plane " + geohelp.ropName(irop) + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
       if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
@@ -1203,14 +1163,14 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto const& simchan : (*simChannelHandle) ) {
       auto ichan = simchan.Channel();
       unsigned int irop = channelRop(ichan);
-      if ( irop == fnrop ) {
+      if ( irop == geohelp.nrop() ) {
         cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
         abort();
       }
-      int iropchan = ichan - fropfirstchan[irop];
-      if ( iropchan < 0 || iropchan >= fropnchan[irop] ) {
+      int iropchan = ichan - int(geohelp.ropFirstChannel(irop));
+      if ( iropchan < 0 || iropchan >= int(geohelp.ropNChannel(irop)) ) {
         cout << myname << "ERROR: ROP channel " << iropchan << " is out of range [0, "
-             << fropnchan[irop] << ")" << endl;
+             << geohelp.ropNChannel(irop) << ")" << endl;
         abort();
       }
       // Fetch the histogram for the current ROP.
@@ -1310,16 +1270,17 @@ void LbTupler::analyze(const art::Event& event) {
         cout << myname << "Dumping MCTrackPerf sim channels for event " << fevent
              << " track " << mctsc.trackID()
              << "\n" << myname << "  Total tick/hit signal: "
-             << mctsc.tickSignal() << "/" << mctsc.hitSignal() << " MeV:" << endl;
-        mctsc.print(cout, 1, myname + "  ");
+             << mctsc.hits().tickSignal() << "/" << mctsc.hits().hitSignal() << " MeV:" << endl;
+        mctsc.print(cout, 0, myname + "  ");
+        //mctsc.print(cout, 1, myname + "  ");
         mctsc.print(cout, 2, myname + "  ");
-        mctsc.print(cout, 3, myname + "  ");
+        //mctsc.print(cout, 3, myname + "  ");
       }
       if ( dbg > 3 ) {
         cout << myname << "Dumping MCTrackPerf MC hits for event " << fevent
              << " track " << mctmc.trackID()
              << "\n" << myname << "  Total tick/hit signal: "
-             << mctmc.tickSignal() << "/" << mctmc.hitSignal() << " MeV:" << endl;
+             << mctmc.hits().tickSignal() << "/" << mctmc.hits().hitSignal() << " MeV:" << endl;
         mctmc.print(cout, 1, myname + "  ");
       }
     }  // End loop over selected MC tracks
@@ -1342,16 +1303,16 @@ void LbTupler::analyze(const art::Event& event) {
   if ( fDoRaw ) {
     // Get the raw digits for the event.
     art::Handle< vector<raw::RawDigit> > rawDigitHandle;
-    event.getByLabel(fRawDigitLabel, rawDigitHandle);
+    event.getByLabel(fRawDigitProducerLabel, rawDigitHandle);
     if ( dbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
 
     // Create the Raw digit histograms.
     vector<TH2*> rawhists;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      int nchan = fropnchan[irop];
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
       int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "raw" + fropname[irop];
-      string title = "Raw digits for TPC plane " + fropname[irop] + " event " + sevt
+      string hname = "h" + sevtf + "raw" + geohelp.ropName(irop);
+      string title = "Raw digits for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
       if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
@@ -1368,7 +1329,7 @@ void LbTupler::analyze(const art::Event& event) {
       int ichan = digit.Channel();
       unsigned int irop = channelRop(ichan);
       TH2* ph = rawhists[irop];
-      unsigned int iropchan = ichan - fropfirstchan[irop];
+      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       int nadc = digit.NADC();
       vector<short> adcs;
       raw::Uncompress(digit.ADCs(), adcs, digit.Compression());
@@ -1400,11 +1361,11 @@ void LbTupler::analyze(const art::Event& event) {
 
     // Create the wire histograms.
     vector<TH2*> wirehists;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      int nchan = fropnchan[irop];
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
       int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "wir" + fropname[irop];
-      string title = "Wire signals for TPC plane " + fropname[irop] + " event " + sevt
+      string hname = "h" + sevtf + "wir" + geohelp.ropName(irop);
+      string title = "Wire signals for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
       if ( dbg > 1 ) cout << myname << "Creating wire histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
@@ -1420,7 +1381,7 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto const& wire : (*wiresHandle) ) {
       int ichan = wire.Channel();
       unsigned int irop = channelRop(ichan);
-      unsigned int iropchan = ichan - fropfirstchan[irop];
+      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       auto sigs = wire.Signal();
       const auto& roisigs = wire.SignalROI();
       TH2* ph = wirehists[irop];
@@ -1452,11 +1413,11 @@ void LbTupler::analyze(const art::Event& event) {
 
     // Create the hit histograms.
     vector<TH2*> hithists;
-    for ( unsigned int irop=0; irop<fnrop; ++irop ) {
-      int nchan = fropnchan[irop];
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
       int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "hit" + fropname[irop];
-      string title = "Hits for TPC plane " + fropname[irop] + " event " + sevt
+      string hname = "h" + sevtf + "hit" + geohelp.ropName(irop);
+      string title = "Hits for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
       if ( dbg > 1 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
@@ -1472,7 +1433,7 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto const& hit : (*hitsHandle) ) {
       int ichan = hit.Channel();
       unsigned int irop = channelRop(ichan);
-      unsigned int iropchan = ichan - fropfirstchan[irop];
+      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       TH2* ph = hithists[irop];
       if ( dbg > 3 ) cout << myname << "Hit channel " << ichan
                           << " (ROP-chan = " << irop << "-" << iropchan << ")"
@@ -1520,7 +1481,7 @@ void LbTupler::analyze(const art::Event& event) {
       std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
       if ( dbg > 2 ) {
         int cltpc = pclu->Plane().TPC;
-        int clapa = ftpcapa[cltpc];
+        int clapa = geohelp.tpcApa(cltpc);
         float cladc = pclu->SummedADC();
         float clchg = pclu->Integral();
         cout << myname << "  Cluster " << setw(wclus) << iclu
@@ -1566,11 +1527,12 @@ void LbTupler::analyze(const art::Event& event) {
 // Find the ROP for a given channel.
 //************************************************************************
 
-// Returns fnrop if channel is invalid.
+// Returns nrop if channel is invalid.
 unsigned int LbTupler::channelRop(unsigned int ichan) const {
-  unsigned int irop = fnrop;
-  for ( irop=0; irop<fnrop; ++irop ) {
-    unsigned int lastchan = fropfirstchan[irop] + fropnchan[irop] - 1;
+  const GeoHelper& geohelp = *fgeohelp;
+  unsigned int irop = geohelp.nrop();
+  for ( irop=0; irop<geohelp.nrop(); ++irop ) {
+    unsigned int lastchan = geohelp.ropFirstChannel(irop) + geohelp.ropNChannel(irop) - 1;
     if ( ichan <= lastchan ) return irop;
   }
   return irop;
@@ -1580,14 +1542,15 @@ unsigned int LbTupler::channelRop(unsigned int ichan) const {
 // Return the ADC-to-energy conversion factor for a channel.
 //************************************************************************
 
-// Returns fnrop if channel is invalid.
 double LbTupler::adc2de(unsigned int ichan) const {
   string myname = "LbTupler::adc2de: ";
+  const GeoHelper& geohelp = *fgeohelp;
   double cfac = 1.0;
   unsigned int irop = channelRop(ichan);
-  if      ( froporient[irop] == "u" ) cfac = fadcmevu;
-  else if ( froporient[irop] == "v" ) cfac = fadcmevv;
-  else if ( froporient[irop] == "z" ) cfac = fadcmevz;
+  View_t view = geohelp.ropView(irop);
+  if      ( view == kU ) cfac = fadcmevu;
+  else if ( view == kV ) cfac = fadcmevv;
+  else if ( view == kZ ) cfac = fadcmevz;
   else {
     cout << myname << "ERROR: plane does not have specified orientation: " << irop << endl;
     abort();
@@ -1601,25 +1564,20 @@ double LbTupler::adc2de(unsigned int ichan) const {
 
 PlanePositionVector LbTupler::planePositions(const double postim[]) const {
   const string myname = "LbTupler::planePositions: ";
+  const GeoHelper& geohelp = *fgeohelp;
   PlanePositionVector pps;
   geo::TPCID tpcid = fGeometry->FindTPCAtPosition(postim);
   if ( ! tpcid.isValid ) return pps;
   unsigned int nplane = fGeometry->Nplanes(tpcid.TPC, tpcid.Cryostat);
   for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
     PlaneID tpp(tpcid, ipla);
-    auto iirop = ftpcplanerop.find(tpp);
-    if ( iirop == ftpcplanerop.end() ) {
-      cout << myname << "ERROR: ftpcplanerop invalid key: ["  << tpp << "]" << endl;
-      abort();
-      continue;
-    }
-    unsigned int irop = iirop->second;
+    unsigned int irop = geohelp.rop(tpp);
     double tick = fdetprop->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
     double tickoff = postim[3]/fsamplingrate;
     tick += tickoff;
     if ( fdbg > 4 ) cout << "Tick offset: " << tickoff << " = " << postim[3] << "/" << fsamplingrate << endl;
     unsigned int ichan = fGeometry->NearestChannel(postim, ipla, tpcid.TPC, tpcid.Cryostat);
-    unsigned int iropchan = ichan - fropfirstchan[irop];
+    unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
     int itick = int(tick);
     if ( tick < 0.0 ) itick += -1;
     PlanePosition pp;
