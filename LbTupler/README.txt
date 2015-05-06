@@ -1,7 +1,7 @@
 README.txt
 <dladams@bnl.gov>
-Januarey 2015
+January 2015
 
-Ntuple builders for LBNE.
+Ntuple builders and performance analysis for LArSoft.
 Derived from larexamples.
 

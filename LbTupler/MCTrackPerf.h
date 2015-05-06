@@ -1,9 +1,12 @@
 // MCTrackPerf.h
 
-// Class to evaluate the performance of cluster finding. There are three steps:
-// 1. Declare the MC particle(s).
-// 2. Loop over SimHits to find the charge in each channel-tick bin.
-// 3. Find the closest cluster for each MC track.
+#ifndef MCTrackPerf_H
+#define MCTrackPerf_H
+
+// David Adams
+// May 2015
+//
+// Class to hold the signals and hits associated with a MC particle or track.
 
 #include "ChannelHits.h"
 namespace simb {
@@ -69,3 +72,5 @@ private:
 };
 
 std::ostream& operator<<(const MCTrackPerf& rhs, std::ostream& out);
+
+#endif

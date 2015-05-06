@@ -36,7 +36,7 @@ Index GeoHelper::badIndex() {
 
 //**********************************************************************
 
-GeoHelper::GeoHelper(const geo::Geometry* pgeo, const util::DetectorProperties* pdetp, Status dbg)
+GeoHelper::GeoHelper(const geo::Geometry* pgeo, util::DetectorProperties* pdetp, Status dbg)
 : m_pgeo(pgeo), m_pdetp(pdetp), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
   // Find the total number of TPC.
   for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
@@ -86,6 +86,51 @@ Index GeoHelper::rop(geo::PlaneID pid) const {
     return badIndex();
   }
   return itrplane->second;
+}
+
+//**********************************************************************
+
+PlanePositionVector GeoHelper::planePositions(const double postim[]) const {
+  const string myname = "LbTupler::planePositions: ";
+  PlanePositionVector pps;
+  if ( geometry() == nullptr ) {
+    cout << myname << "ERROR: Geometry is null." << endl;
+    return pps;
+  }
+  if ( detectorProperties() == nullptr ) {
+    cout << myname << "ERROR: Detector properties is null." << endl;
+    return pps;
+  }
+  double samplingrate = detectorProperties()->SamplingRate();
+  if ( samplingrate <= 0 ) {
+    cout << myname << "ERROR: Invalid sampling rate." << endl;
+    return pps;
+  }
+  geo::TPCID tpcid = geometry()->FindTPCAtPosition(postim);
+  if ( ! tpcid.isValid ) return pps;
+  unsigned int nplane = geometry()->Nplanes(tpcid.TPC, tpcid.Cryostat);
+  for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
+    PlaneID tpp(tpcid, ipla);
+    unsigned int irop = rop(tpp);
+    double tick = detectorProperties()->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
+    double tickoff = postim[3]/samplingrate;
+    tick += tickoff;
+    if ( m_dbg > 2 ) cout << myname << "Tick offset: " << tickoff << " = " << postim[3] << "/" << samplingrate << endl;
+    unsigned int ichan = geometry()->NearestChannel(postim, ipla, tpcid.TPC, tpcid.Cryostat);
+    unsigned int iropchan = ichan - ropFirstChannel(irop);
+    int itick = int(tick);
+    if ( tick < 0.0 ) itick += -1;
+    PlanePosition pp;
+    pp.plane = ipla;
+    pp.rop = irop;
+    pp.channel = ichan;
+    pp.tick = tick;
+    pp.itick = itick;
+    pp.ropchannel = iropchan;
+    pp.valid = true;
+    pps.push_back(pp);
+  }
+  return pps;
 }
 
 //**********************************************************************
@@ -199,6 +244,18 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   return out;
 }
   
+//**********************************************************************
+
+Index GeoHelper::channelRop(Index chan) const {
+  const string myname = "GeoHelper::channelRop: ";
+  Index irop = nrop();
+  for ( irop=0; irop<nrop(); ++irop ) {
+    unsigned int lastchan = ropFirstChannel(irop) + ropNChannel(irop) - 1;
+    if ( chan <= lastchan ) return irop;
+  }
+  return irop;
+}
+
 //**********************************************************************
 
 Status GeoHelper::fillStandardApaMapping() {

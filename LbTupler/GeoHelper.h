@@ -11,6 +11,7 @@
 #include <map>
 // We need the folowing because simple enums cannot be forward declared.
 #include "SimpleTypesAndConstants/geo_types.h"
+#include "PlanePosition.h"
 
 namespace geo {
 class Geometry;
@@ -38,7 +39,14 @@ public:
 public:
 
   // Ctor from LArSoft geometry service and detector properties.
-  GeoHelper(const geo::Geometry* pgeo, const util::DetectorProperties* pdetp =nullptr, Status dbg =0);
+  // Note: DetectorProperties has non-const methods.
+  GeoHelper(const geo::Geometry* pgeo, util::DetectorProperties* pdetp =nullptr, Status dbg =0);
+
+  // Return the geometry.
+  const geo::Geometry* geometry() const { return m_pgeo; }
+
+  // Return the detector properties.
+  util::DetectorProperties* detectorProperties() const { return m_pdetp; }
 
   // Return the corners of the active TPC volume.
   Status tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const;
@@ -79,6 +87,14 @@ public:
   // Print detector description.
   std::ostream& print(std::ostream& out, int iopt =0, std::string prefix ="") const;
 
+  // Return the Rop for a channel.
+  // Returns nrop() if the channel is not valid.
+  Index channelRop(Index chan) const;
+
+  // Return all TPC plane postitions a spacetime point.
+  // xyzt = {x, y, z, t} [cm,ns]
+  PlanePositionVector planePositions(const double xyzt[]) const;
+
 private:
 
   // Fill info pertaining to APAs and ROPs assuming standard TPC-APA mapping.
@@ -87,7 +103,7 @@ private:
 private:
 
   const geo::Geometry* m_pgeo;
-  const util::DetectorProperties* m_pdetp;
+  util::DetectorProperties* m_pdetp;
   Status m_dbg;
   Index m_ntpc;                 // Total # TPCs in the detector
   Index m_ntpp;                 // Total # TPC planes in the detector

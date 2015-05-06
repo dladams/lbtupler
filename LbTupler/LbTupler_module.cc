@@ -59,6 +59,7 @@
 #include "reducedPDG.h"
 #include "intProcess.h"
 #include "MCTrackPerf.h"
+#include "PlanePosition.h"
 
 using std::cout;
 using std::endl;
@@ -79,25 +80,6 @@ using geo::kZ;
 #include "GeoHelper.h"
 
 namespace LbTupler {
-
-//**********************************************************************
-// Helper classes.
-//**********************************************************************
-
-class PlanePosition {
-public:
-  unsigned int plane;          // plane # in the TPC
-  unsigned int rop;            // Global readout plane index.
-  unsigned int channel;        // Global channel.
-  unsigned int ropchannel;     // Channel in the readout plane.
-  double tick;                 // TDC tick float (t + x/v_drift)/t_bin
-  int itick;                   // TDC tick.
-  bool valid;                  // True if this is a valid plane position
-  PlanePosition() : plane(0), rop(0), channel(0), ropchannel(0), tick(0), valid(false) { }
-};
-
-typedef vector<PlanePosition> PlanePositionVector;
-
 
 //**********************************************************************
 // Primary class.
@@ -128,16 +110,8 @@ public:
   // The analysis routine, called once per event. 
   void analyze (const art::Event& evt); 
 
-  // Find the ROP for a given channel.
-  // Returns nrop if channel is invalid.
-  unsigned int channelRop(unsigned int ichan) const;
-
   // Return the ADC-to-energy conversion factor for a channel.
   double adc2de(unsigned int ichan) const;
-
-  // Return the plane information for a space point.
-  // post = {x, y, z, t} [cm,ns]
-  PlanePositionVector planePositions(const double post[]) const;
 
 private:
 
@@ -602,7 +576,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
 
   cout << myname << endl;
   cout << myname << "Summary from geometry helper:" << endl;
-  fgeohelp = new GeoHelper(&*fGeometry, &*fdetprop, 4);
+  fgeohelp = new GeoHelper(&*fGeometry, &*fdetprop, 1);
   fgeohelp->print(cout, 0, myname);
   fnrop = fgeohelp->nrop();
   return;
@@ -892,7 +866,7 @@ void LbTupler::analyze(const art::Event& event) {
             fdety2 = y;
             fdetz2 = z;
             // Find the (channel, tick) for each plane in this TPC.
-            PlanePositionVector pps = planePositions(xyzt);
+            PlanePositionVector pps = geohelp.planePositions(xyzt);
             if ( pps.size() ) {
               ++fnptdet;
               ++fnpttpc[itpc];
@@ -977,7 +951,7 @@ void LbTupler::analyze(const art::Event& event) {
               double za = z0 + (istp+0.5)*invstep*dz;
               double ta = t0 + (istp+0.5)*invstep*dt;
               double postim[4] = {xa, ya, za, ta};
-              PlanePositionVector pps = planePositions(postim);
+              PlanePositionVector pps = geohelp.planePositions(postim);
               for ( const auto& pp : pps ) {
                 if ( ! pp.valid ) cout << myname << "    Invalid plane position!" << endl;
                 TH2* ph = mcphists[pp.rop];
@@ -1162,7 +1136,7 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto& val : fscEnergy ) val = 0.0;
     for ( auto const& simchan : (*simChannelHandle) ) {
       auto ichan = simchan.Channel();
-      unsigned int irop = channelRop(ichan);
+      unsigned int irop = geohelp.channelRop(ichan);
       if ( irop == geohelp.nrop() ) {
         cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
         abort();
@@ -1327,7 +1301,7 @@ void LbTupler::analyze(const art::Event& event) {
 
     for ( auto const& digit : (*rawDigitHandle) ) {
       int ichan = digit.Channel();
-      unsigned int irop = channelRop(ichan);
+      unsigned int irop = geohelp.channelRop(ichan);
       TH2* ph = rawhists[irop];
       unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       int nadc = digit.NADC();
@@ -1380,7 +1354,7 @@ void LbTupler::analyze(const art::Event& event) {
 
     for ( auto const& wire : (*wiresHandle) ) {
       int ichan = wire.Channel();
-      unsigned int irop = channelRop(ichan);
+      unsigned int irop = geohelp.channelRop(ichan);
       unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       auto sigs = wire.Signal();
       const auto& roisigs = wire.SignalROI();
@@ -1432,7 +1406,7 @@ void LbTupler::analyze(const art::Event& event) {
 
     for ( auto const& hit : (*hitsHandle) ) {
       int ichan = hit.Channel();
-      unsigned int irop = channelRop(ichan);
+      unsigned int irop = geohelp.channelRop(ichan);
       unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       TH2* ph = hithists[irop];
       if ( dbg > 3 ) cout << myname << "Hit channel " << ichan
@@ -1524,21 +1498,6 @@ void LbTupler::analyze(const art::Event& event) {
 }
 
 //************************************************************************
-// Find the ROP for a given channel.
-//************************************************************************
-
-// Returns nrop if channel is invalid.
-unsigned int LbTupler::channelRop(unsigned int ichan) const {
-  const GeoHelper& geohelp = *fgeohelp;
-  unsigned int irop = geohelp.nrop();
-  for ( irop=0; irop<geohelp.nrop(); ++irop ) {
-    unsigned int lastchan = geohelp.ropFirstChannel(irop) + geohelp.ropNChannel(irop) - 1;
-    if ( ichan <= lastchan ) return irop;
-  }
-  return irop;
-}
-
-//************************************************************************
 // Return the ADC-to-energy conversion factor for a channel.
 //************************************************************************
 
@@ -1546,7 +1505,7 @@ double LbTupler::adc2de(unsigned int ichan) const {
   string myname = "LbTupler::adc2de: ";
   const GeoHelper& geohelp = *fgeohelp;
   double cfac = 1.0;
-  unsigned int irop = channelRop(ichan);
+  unsigned int irop = geohelp.channelRop(ichan);
   View_t view = geohelp.ropView(irop);
   if      ( view == kU ) cfac = fadcmevu;
   else if ( view == kV ) cfac = fadcmevv;
@@ -1556,41 +1515,6 @@ double LbTupler::adc2de(unsigned int ichan) const {
     abort();
   }
   return cfac;
-}
-
-//************************************************************************
-// Return the channel and tick for a spacepoint.
-//************************************************************************
-
-PlanePositionVector LbTupler::planePositions(const double postim[]) const {
-  const string myname = "LbTupler::planePositions: ";
-  const GeoHelper& geohelp = *fgeohelp;
-  PlanePositionVector pps;
-  geo::TPCID tpcid = fGeometry->FindTPCAtPosition(postim);
-  if ( ! tpcid.isValid ) return pps;
-  unsigned int nplane = fGeometry->Nplanes(tpcid.TPC, tpcid.Cryostat);
-  for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
-    PlaneID tpp(tpcid, ipla);
-    unsigned int irop = geohelp.rop(tpp);
-    double tick = fdetprop->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
-    double tickoff = postim[3]/fsamplingrate;
-    tick += tickoff;
-    if ( fdbg > 4 ) cout << "Tick offset: " << tickoff << " = " << postim[3] << "/" << fsamplingrate << endl;
-    unsigned int ichan = fGeometry->NearestChannel(postim, ipla, tpcid.TPC, tpcid.Cryostat);
-    unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
-    int itick = int(tick);
-    if ( tick < 0.0 ) itick += -1;
-    PlanePosition pp;
-    pp.plane = ipla;
-    pp.rop = irop;
-    pp.channel = ichan;
-    pp.tick = tick;
-    pp.itick = itick;
-    pp.ropchannel = iropchan;
-    pp.valid = true;
-    pps.push_back(pp);
-  }
-  return pps;
 }
 
 //************************************************************************
