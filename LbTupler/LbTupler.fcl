@@ -90,7 +90,7 @@ physics:
       DoMCTrackPerf:  true
       DoSimChannels:  true
       DoRaw:          true
-      DoWires:        false
+      DoWires:        true 
       DoHits:         false
       DoClusters:     true
 
@@ -166,6 +166,7 @@ physics:
       AdcToMeVConversionZ:  0.00180
 
       # Range for energy deposit [MeV] in histograms.
+      HistDEMaxMcParticle:  5.0
       HistDEMax:  1.0
 
       # If raw and wire histograms should be converted to energy.

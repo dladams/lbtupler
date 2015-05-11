@@ -20,6 +20,7 @@ class MCTrackPerf {
 
 public:
 
+  typedef ChannelHits::Index   Index;
   typedef ChannelHits::Channel Channel;
   typedef ChannelHits::Tick    Tick;
   typedef ChannelHits::Signal  Signal;
@@ -30,7 +31,7 @@ public:
   MCTrackPerf();
 
   // Ctor for a MC track.
-  MCTrackPerf(const simb::MCParticle& par);
+  MCTrackPerf(const simb::MCParticle& par, const GeoHelper* pgh =nullptr);
 
   // Add an energy deposit in a bin.
   int addSignal(Channel chan, Tick tick, Signal signal);
@@ -57,7 +58,7 @@ public:
   std::ostream& print(std::ostream& out, int detail =1, std::string prefix ="") const;
 
   // Fill a Channel vs. tick histogram.
-  //int fillChannelTickHist() const;
+  int fillRopChannelTickHist(TH2* ph, Index irop) const;
 
   // Return the distance to a cluster.
   //double clusterDistance(const recob::Cluster& clu) const;

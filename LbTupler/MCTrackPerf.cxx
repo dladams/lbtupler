@@ -19,6 +19,7 @@ using sim::SimChannel;
 typedef MCTrackPerf::Tick    Tick;
 typedef MCTrackPerf::Channel Channel;
 typedef MCTrackPerf::Signal  Signal;
+typedef MCTrackPerf::Index   Index;
 
 //**********************************************************************
 // Local definitions.
@@ -36,10 +37,11 @@ MCTrackPerf::MCTrackPerf()
 
 //**********************************************************************
 
-MCTrackPerf::MCTrackPerf(const MCParticle& par)
+MCTrackPerf::MCTrackPerf(const MCParticle& par, const GeoHelper* pgh)
 : m_trackID(par.TrackId()),
   m_pdg(par.PdgCode()),
-  m_rpdg(reducedPDG(m_pdg)) { }
+  m_rpdg(reducedPDG(m_pdg)),
+  m_hits(pgh) { }
 
 //**********************************************************************
 
@@ -81,6 +83,12 @@ int MCTrackPerf::rpdg() const {
 
 const ChannelHits& MCTrackPerf::hits() const {
   return m_hits;
+}
+
+//**********************************************************************
+
+int MCTrackPerf::fillRopChannelTickHist(TH2* ph, Index irop) const {
+  return m_hits.fillRopChannelTickHist(ph, irop);
 }
 
 //**********************************************************************

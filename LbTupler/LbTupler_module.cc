@@ -220,6 +220,7 @@ private:
   double fadcmevv;   // MeV to ADC conversion factor for V-planes.
   double fadcmevz;   // MeV to ADC conversion factor for X-planes.
   bool fhistusede;   // If true, raw and wire spectra are converted to MeV.
+  double fdemaxmcp;  // Max energy deposit for histogram ranges for McParticle
   double fdemax;     // Max energy deposit for histogram ranges
 
   // The maximum size of fdedxBins; in other words, it's the
@@ -539,6 +540,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fadcmevu                 = p.get<double>("AdcToMeVConversionU");
   fadcmevv                 = p.get<double>("AdcToMeVConversionV");
   fadcmevz                 = p.get<double>("AdcToMeVConversionZ");
+  fdemaxmcp                = p.get<double>("HistDEMaxMcParticle");
   fdemax                   = p.get<double>("HistDEMax");
   fhistusede               = p.get<bool>("HistUseDE");
   string sep = ": ";
@@ -570,6 +572,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "AdcToMeVConversionU" << sep << fadcmevu << endl;
     cout << prefix << setw(wlab) << "AdcToMeVConversionV" << sep << fadcmevv << endl;
     cout << prefix << setw(wlab) << "AdcToMeVConversionZ" << sep << fadcmevz << endl;
+    cout << prefix << setw(wlab) << "HistDEMaxMcParticle" << sep << fdemaxmcp << endl;
     cout << prefix << setw(wlab) << "HistDEMax" << sep << fdemax << endl;
     cout << prefix << setw(wlab) << "HistUseDE" << sep << fhistusede << endl;
   }
@@ -586,7 +589,6 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
 
 void LbTupler::analyze(const art::Event& event) {
   const string myname = "LbTupler::analyze: ";
-  int dbg = fdbg;
 
   // Access ART's TFileService, which will handle creating and writing
   // histograms and n-tuples for us. 
@@ -603,7 +605,7 @@ void LbTupler::analyze(const art::Event& event) {
   fevent  = event.id().event(); 
   fRun    = event.run();
   fSubRun = event.subRun();
-  if ( dbg > 0 ) cout << myname << "Processing run " << fRun << "-" << fSubRun
+  if ( fdbg > 0 ) cout << myname << "Processing run " << fRun << "-" << fSubRun
        << ", event " << fevent << endl;
 
   // Create string representation of the event number.
@@ -622,7 +624,7 @@ void LbTupler::analyze(const art::Event& event) {
     // See $NUTOOLS_DIR/include/SimulationBase/MCTruth.h
     art::Handle< vector<simb::MCTruth> > truthHandle;
     event.getByLabel(fTruthProducerLabel, truthHandle);
-    if ( dbg > 1 ) cout << myname << "Truth count: " << truthHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Truth count: " << truthHandle->size() << endl;
   }
 
   //************************************************************************
@@ -633,7 +635,7 @@ void LbTupler::analyze(const art::Event& event) {
   art::Handle< vector<simb::MCParticle> > particleHandle;
   if ( fDoMCParticles || fDoMCTrackPerf ) {
     event.getByLabel(fParticleProducerLabel, particleHandle);
-    if ( dbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
   }
 
   // Get all the simulated channels for the event. These channels
@@ -641,7 +643,7 @@ void LbTupler::analyze(const art::Event& event) {
   art::Handle<vector<sim::SimChannel>> simChannelHandle;
   if ( fDoMCParticles || fDoSimChannels || fDoMCTrackPerf ) {
     event.getByLabel(fSimulationProducerLabel, simChannelHandle);
-    if ( dbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
   }
 
   // Create vector of selected MC particles for analysis.
@@ -655,13 +657,13 @@ void LbTupler::analyze(const art::Event& event) {
       // Select particles.
       // 21apr2015: Keep also gammas
       if ( proc == 0 && rpdg < 7 ) {
-        if ( dbg > 1 ) cout << myname << "Selecting";
-        selectedMCTrackPerfsMC.push_back(MCTrackPerf(*&particle));
-        selectedMCTrackPerfsSC.push_back(MCTrackPerf(*&particle));
+        if ( fdbg > 1 ) cout << myname << "Selecting";
+        selectedMCTrackPerfsMC.emplace(selectedMCTrackPerfsMC.end(), *&particle, fgeohelp);
+        selectedMCTrackPerfsSC.emplace(selectedMCTrackPerfsSC.end(), *&particle, fgeohelp);
       } else {
-        if ( dbg > 1 ) cout << myname << "Rejecting";
+        if ( fdbg > 1 ) cout << myname << "Rejecting";
       }
-      if ( dbg > 1 ) cout << " MC particle " << setw(6) << trackid 
+      if ( fdbg > 1 ) cout << " MC particle " << setw(6) << trackid 
                           << " with RPDG=" << setw(2) << rpdg
                           << " and PROC=" << setw(2) << proc
                           << " and PDG=" << setw(10) << particle.PdgCode()
@@ -672,19 +674,22 @@ void LbTupler::analyze(const art::Event& event) {
   // MCParticles histograms and tree.
   if ( fDoMCParticles ) {
 
-    // Create the event MC particle histograms.
+    // Create the event channel-tick bin histograms for all selected MC particles.
+    int ntick = ftdcTickMax - ftdcTickMin;
+    string hnprefix = "h" + sevtf + "_mcp";
+    string htprefix = "Event " + sevt + " MC particles for ";
+    string htsuffix = ";TDC tick;Channel;Energy [MeV]";
     vector<TH2*> mcphists;
     for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
       int nchan = geohelp.ropNChannel(irop);
-      int ntick = ftdcTickMax-ftdcTickMin;
-      string hname = "h" + sevtf + "mcp" + geohelp.ropName(irop);
-      string title = "MC particles for " + geohelp.ropName(irop) + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
-      if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
+      string hname = hnprefix + geohelp.ropName(irop);
+      string title = htprefix + geohelp.ropName(irop) + htsuffix;
+      if ( fdbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                                 ntick, ftdcTickMin, ftdcTickMax,
                                 nchan, 0, nchan);
-      ph->GetZaxis()->SetRangeUser(0.0, fdemax);
+      ph->GetZaxis()->SetRangeUser(0.0, fdemaxmcp);
       ph->SetContour(20);
       ph->SetStats(0);
       mcphists.push_back(ph);
@@ -734,7 +739,7 @@ void LbTupler::analyze(const art::Event& event) {
         fchild[ichi] = tid;
         if ( ndetptmap[tid] ) fdetchild[fndetchild++] = tid;
       }
-      if ( dbg > 2 ) {
+      if ( fdbg > 2 ) {
         cout << myname << "ID=" << ftrackid << ", PDG=" << fpdg
              << ", RPDG=" << frpdg
              << ", status=" << particle.StatusCode()
@@ -748,7 +753,7 @@ void LbTupler::analyze(const art::Event& event) {
       for ( auto& mctp : selectedMCTrackPerfsMC ) {
         if ( int(mctp.trackID()) == ftrackid ) {
           pmctp = &mctp;
-          if ( dbg > 1 ) cout << myname << "  This is a selected track." << endl;
+          if ( fdbg > 1 ) cout << myname << "  This is a selected track." << endl;
           break;
         }
       }
@@ -987,7 +992,7 @@ void LbTupler::analyze(const art::Event& event) {
         // Use a polar-coordinate view of the 4-vectors to
         // get the track length.
         double trackLength = ( positionEnd - positionStart ).Rho();
-        if ( dbg > 2 ) cout << myname << "  Track length: " << trackLength << " mm" << endl;
+        if ( fdbg > 2 ) cout << myname << "  Track length: " << trackLength << " mm" << endl;
 
         // Make a histogram of the track length.
         fTrackLengthHist->Fill( trackLength );
@@ -1068,7 +1073,7 @@ void LbTupler::analyze(const art::Event& event) {
                   double nel = energyDeposit.numElectrons;
                   double de = nel * fElectronsToGeV;
                   fdedxBins[bin] += de;
-                  if ( dbg > 4 ) cout << myname << "  Nel, dE: " << nel << ", " << de << endl;
+                  if ( fdbg > 4 ) cout << myname << "  Nel, dE: " << nel << ", " << de << endl;
                 }
               } // For each energy deposit
             } // For each time slice
@@ -1082,7 +1087,7 @@ void LbTupler::analyze(const art::Event& event) {
       } // if selected
       fSimulationNtuple->Fill();
     } // end loop over all particles in the event. 
-    if ( dbg > 2 ) {
+    if ( fdbg > 2 ) {
       cout << myname << "Tree " << fSimulationNtuple->GetName()
                      << " entry count  is " << fSimulationNtuple->GetEntries() << endl;
       for ( auto ph : mcphists ) {
@@ -1090,13 +1095,41 @@ void LbTupler::analyze(const art::Event& event) {
              << " entry count is " << ph->GetEntries() << endl;
       }
     }
+
+    // Create the channel-tick bin histograms for each selected MC particle.
+    vector<vector<TH2*>> mcphists_mcp;
+    for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
+      vector<TH2*>& hists = *mcphists_mcp.emplace(mcphists_mcp.end(), geohelp.nrop(), nullptr);
+      ostringstream ssmcp;
+      ssmcp << mctrackperf.trackID();
+      string smcp = ssmcp.str();
+      hnprefix = "h" + sevtf + "mcp" + smcp + "_mcp";
+      htprefix = "Event " + sevt + " MC particle " + smcp + " for ";
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        if ( mctrackperf.hits().ropNbin(irop) == 0 ) continue;
+        int nchan = geohelp.ropNChannel(irop);
+        string hname = hnprefix + geohelp.ropName(irop);
+        string title = htprefix + geohelp.ropName(irop) + htsuffix;
+        TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
+                                  ntick, ftdcTickMin, ftdcTickMax,
+                                  nchan, 0, nchan);
+        ph->GetZaxis()->SetRangeUser(0.0, fdemaxmcp);
+        ph->SetContour(20);
+        ph->SetStats(0);
+        mctrackperf.fillRopChannelTickHist(ph, irop);
+        hists[irop] = ph;
+      }  // End loop over ROPs
+    }  // End loop over selected MC particles
+
   }  // end Do MCParticle
 
   if ( fDoMCTrackPerf ) {
-    if ( dbg > 0 ) cout << myname << "Selected MC track list with MCParticle fill (size = "
-                        << selectedMCTrackPerfsMC.size() << ")" << endl;
+    int flag = 0;
+    if ( fdbg > 0 ) flag = 11;
+    if ( fdbg > 0 ) cout << myname << "Selected MC track list with MCParticle fill (size = "
+                         << selectedMCTrackPerfsMC.size() << ")" << endl;
     for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
-      mctrackperf.print(cout, dbg, myname + "  ");
+      mctrackperf.print(cout, flag, myname + "  ");
     }  // End loop over selected MC tracks
   }  // end DoMCTrackPerf
 
@@ -1118,7 +1151,7 @@ void LbTupler::analyze(const art::Event& event) {
       int ntick = ftdcTickMax-ftdcTickMin;
       string hname = "h" + sevtf + "sim" + geohelp.ropName(irop);
       string title = "Sim channels for TPC plane " + geohelp.ropName(irop) + " event " + sevt + ";TDC tick;Channel;Energy [MeV]";
-      if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
+      if ( fdbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                                 ntick, ftdcTickMin, ftdcTickMax,
@@ -1149,7 +1182,7 @@ void LbTupler::analyze(const art::Event& event) {
       }
       // Fetch the histogram for the current ROP.
       TH2* psphist = sphists[irop];
-      if ( dbg > 3 ) cout << myname << "SimChannel " << setw(4) << fscCount
+      if ( fdbg > 3 ) cout << myname << "SimChannel " << setw(4) << fscCount
                           << ": ROP " << setw(2) << irop
                           << ", Global/ROP channel " << setw(4) << ichan
                           << "/" << setw(3) << iropchan;
@@ -1188,14 +1221,14 @@ void LbTupler::analyze(const art::Event& event) {
           energytdc += tdcEnergy*tdc;
           // Fill the histogram.
           psphist->Fill(tdc, iropchan, tdcEnergy);
-          if ( dbg > 4 ) cout << "\n" << myname << "    " << psphist->GetName()
+          if ( fdbg > 4 ) cout << "\n" << myname << "    " << psphist->GetName()
                               << ": Global/ROP channel " << setw(4) << ichan
                               << "/" << setw(3) << iropchan
                               << ", tdc " << tdc
                               << " has " << int(100.0*tdcEnergy+0.4999)/100.0 << " MeV";
         }
-        if ( dbg > 3 ) {
-          if ( dbg > 4 ) cout << "\n" << myname << "    Total ";
+        if ( fdbg > 3 ) {
+          if ( fdbg > 4 ) cout << "\n" << myname << "    Total ";
           else cout << ": ";
           double ren = 0.01*int(100.0*energy+0.49999);
           double rchg = int(charge+0.499999);
@@ -1214,12 +1247,15 @@ void LbTupler::analyze(const art::Event& event) {
       }
     } // end loop over sim channels in the event. 
 
+    // Fill SimChannel tree.
     fSimChannelNtuple->Fill();
+
+
   }  // end DoSimChannel
 
   // Add sim channel info to the sim channel performance objects.
   if ( fDoMCTrackPerf ) {
-    if ( dbg > 0 ) cout << myname << "Selected MC track list with SimChannel fill (size = "
+    if ( fdbg > 0 ) cout << myname << "Selected MC track list with SimChannel fill (size = "
                         << selectedMCTrackPerfsSC.size() << ")" << endl;
     for ( auto& mctrackperf : selectedMCTrackPerfsSC ) {
       // Add the sim channel info to the selected tracks.
@@ -1229,33 +1265,31 @@ void LbTupler::analyze(const art::Event& event) {
     }  // End loop over selected SimChannel MC tracks
   }  // end DoMCTrackPerf
 
-  // Add hits to the sim channel performance objects.
+  // Add hits to the performance objects.
   if ( fDoMCTrackPerf ) {
     for ( auto& mctrackperf : selectedMCTrackPerfsSC ) mctrackperf.buildHits();
     for ( auto& mctrackperf : selectedMCTrackPerfsMC ) mctrackperf.buildHits();
   }
 
   // Display the MC tracks.
-  if ( fDoMCTrackPerf && dbg > 3 ) {
+  if ( fDoMCTrackPerf && fdbg > 3 ) {
     for ( unsigned int imcs=0; imcs<selectedMCTrackPerfsSC.size(); ++imcs ) {
       const auto mctsc = selectedMCTrackPerfsSC.at(imcs);
       const auto mctmc = selectedMCTrackPerfsMC.at(imcs);
-      if ( dbg > 3 ) {
+      if ( fdbg > 3 ) {
         cout << myname << "Dumping MCTrackPerf sim channels for event " << fevent
              << " track " << mctsc.trackID()
              << "\n" << myname << "  Total tick/hit signal: "
              << mctsc.hits().tickSignal() << "/" << mctsc.hits().hitSignal() << " MeV:" << endl;
-        mctsc.print(cout, 0, myname + "  ");
-        //mctsc.print(cout, 1, myname + "  ");
-        mctsc.print(cout, 2, myname + "  ");
-        //mctsc.print(cout, 3, myname + "  ");
+        mctsc.print(cout,  0, myname + "  ");
+        mctsc.print(cout, 12, myname + "  ");
       }
-      if ( dbg > 3 ) {
+      if ( fdbg > 3 ) {
         cout << myname << "Dumping MCTrackPerf MC hits for event " << fevent
              << " track " << mctmc.trackID()
              << "\n" << myname << "  Total tick/hit signal: "
              << mctmc.hits().tickSignal() << "/" << mctmc.hits().hitSignal() << " MeV:" << endl;
-        mctmc.print(cout, 1, myname + "  ");
+        mctmc.print(cout, 11, myname + "  ");
       }
     }  // End loop over selected MC tracks
   }  // end DoMCTrackPerf
@@ -1278,7 +1312,7 @@ void LbTupler::analyze(const art::Event& event) {
     // Get the raw digits for the event.
     art::Handle< vector<raw::RawDigit> > rawDigitHandle;
     event.getByLabel(fRawDigitProducerLabel, rawDigitHandle);
-    if ( dbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Raw digit count: " << rawDigitHandle->size() << endl;
 
     // Create the Raw digit histograms.
     vector<TH2*> rawhists;
@@ -1288,7 +1322,7 @@ void LbTupler::analyze(const art::Event& event) {
       string hname = "h" + sevtf + "raw" + geohelp.ropName(irop);
       string title = "Raw digits for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
-      if ( dbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
+      if ( fdbg > 1 ) cout << myname << "Creating sim histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                                 ntick, ftdcTickMin, ftdcTickMax,
@@ -1309,7 +1343,7 @@ void LbTupler::analyze(const art::Event& event) {
       raw::Uncompress(digit.ADCs(), adcs, digit.Compression());
       unsigned int nzero = 0;
       for ( auto adc : adcs ) if ( adc == 0.0 ) ++nzero;
-      if ( dbg > 3 ) cout << myname << "Digit channel " << ichan
+      if ( fdbg > 3 ) cout << myname << "Digit channel " << ichan
                           << " (ROP-chan = " << irop << "-" << iropchan
                           << ") has " << nadc << " ADCs and "
                           << digit.Samples() << " samples. Uncompressed size is " << adcs.size()
@@ -1331,7 +1365,7 @@ void LbTupler::analyze(const art::Event& event) {
     // See $LARDATA_DIR/include/RecoBase/Wire.h
     art::Handle< vector<recob::Wire> > wiresHandle;
     event.getByLabel(fWireProducerLabel, wiresHandle);
-    if ( dbg > 1 ) cout << myname << "Wire count: " << wiresHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Wire count: " << wiresHandle->size() << endl;
 
     // Create the wire histograms.
     vector<TH2*> wirehists;
@@ -1341,7 +1375,7 @@ void LbTupler::analyze(const art::Event& event) {
       string hname = "h" + sevtf + "wir" + geohelp.ropName(irop);
       string title = "Wire signals for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
-      if ( dbg > 1 ) cout << myname << "Creating wire histo " << hname << " with " << ntick
+      if ( fdbg > 1 ) cout << myname << "Creating wire histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                                 ntick, ftdcTickMin, ftdcTickMax,
@@ -1359,7 +1393,7 @@ void LbTupler::analyze(const art::Event& event) {
       auto sigs = wire.Signal();
       const auto& roisigs = wire.SignalROI();
       TH2* ph = wirehists[irop];
-      if ( dbg > 3 ) cout << myname << "Wire channel " << ichan
+      if ( fdbg > 3 ) cout << myname << "Wire channel " << ichan
                           << " (ROP-chan = " << irop << "-" << iropchan << ")"
                           << " with view " << wire.View()
                           << " has " << sigs.size() << " signals"
@@ -1383,7 +1417,7 @@ void LbTupler::analyze(const art::Event& event) {
     // See $LARDATA_DIR/include/RecoBase/Hit.h
     art::Handle< vector<recob::Hit> > hitsHandle;
     event.getByLabel(fHitProducerLabel, hitsHandle);
-    if ( dbg > 1 ) cout << myname << "Hit count: " << hitsHandle->size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Hit count: " << hitsHandle->size() << endl;
 
     // Create the hit histograms.
     vector<TH2*> hithists;
@@ -1393,7 +1427,7 @@ void LbTupler::analyze(const art::Event& event) {
       string hname = "h" + sevtf + "hit" + geohelp.ropName(irop);
       string title = "Hits for TPC plane " + geohelp.ropName(irop) + " event " + sevt
                      + ";TDC tick;Channel;" + ztitle;
-      if ( dbg > 1 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
+      if ( fdbg > 1 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
                           << " TDC bins " << " and " << nchan << " channel bins" << endl;
       TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
                                 ntick, ftdcTickMin, ftdcTickMax,
@@ -1409,7 +1443,7 @@ void LbTupler::analyze(const art::Event& event) {
       unsigned int irop = geohelp.channelRop(ichan);
       unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
       TH2* ph = hithists[irop];
-      if ( dbg > 3 ) cout << myname << "Hit channel " << ichan
+      if ( fdbg > 3 ) cout << myname << "Hit channel " << ichan
                           << " (ROP-chan = " << irop << "-" << iropchan << ")"
                           << " with view " << hit.View()
                           << " has charge " << hit.SummedADC() 
@@ -1433,7 +1467,7 @@ void LbTupler::analyze(const art::Event& event) {
     event.getByLabel(fClusterProducerLabel, clustersHandle);
     std::vector<art::Ptr<recob::Cluster>> clusters;
     art::fill_ptr_vector(clusters, clustersHandle);
-    if ( dbg > 1 ) cout << myname << "Cluster count: " << clusters.size() << endl;
+    if ( fdbg > 1 ) cout << myname << "Cluster count: " << clusters.size() << endl;
     // Get the cluster hit associations for the event.
     art::FindManyP<recob::Hit> clusterHits(clustersHandle, event, fClusterProducerLabel);
     if ( ! clusterHits.isValid() ) {
@@ -1453,7 +1487,7 @@ void LbTupler::analyze(const art::Event& event) {
     for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
       art::Ptr<recob::Cluster> pclu = clusters[iclu];
       std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
-      if ( dbg > 2 ) {
+      if ( fdbg > 2 ) {
         int cltpc = pclu->Plane().TPC;
         int clapa = geohelp.tpcApa(cltpc);
         float cladc = pclu->SummedADC();
@@ -1479,7 +1513,7 @@ void LbTupler::analyze(const art::Event& event) {
         int lid = phit->LocalIndex();
         unsigned int tick1 = phit->StartTick();
         unsigned int tick2 = phit->EndTick();
-        if ( dbg > 3 ) cout << myname << "    "
+        if ( fdbg > 3 ) cout << myname << "    "
                             << setw(wchan) << chan << "-" << lid
                             << " " << setw(wwid) << sswid.str() << " I:" << lid
                             << "  (" << setw(wtick) << tick1 << ", " << setw(wtick) << tick2 << ")"

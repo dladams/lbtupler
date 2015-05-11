@@ -2,9 +2,10 @@
 
 #include "ChannelHits.h"
 #include <iomanip>
+#include "TH2.h"
 #include "SimulationBase/MCParticle.h"
 #include "Simulation/SimChannel.h"
-#include "reducedPDG.h"
+#include "GeoHelper.h"
 
 using std::string;
 using std::cout;
@@ -17,6 +18,7 @@ using sim::SimChannel;
 typedef ChannelHits::Tick    Tick;
 typedef ChannelHits::Channel Channel;
 typedef ChannelHits::Signal  Signal;
+typedef ChannelHits::Index   Index;
 
 //**********************************************************************
 // Local definitions.
@@ -55,8 +57,20 @@ Tick ChannelHits::badTick() {
 //**********************************************************************
 
 ChannelHits::ChannelHits()
-: m_tickMin(badTick()),
+: m_pgh(nullptr),
+  m_tickMin(badTick()),
   m_tickMax(badTick()) { }
+
+//**********************************************************************
+
+ChannelHits::ChannelHits(const GeoHelper* pgh)
+: m_pgh(pgh),
+  m_tickMin(badTick()),
+  m_tickMax(badTick()) {
+  if ( m_pgh != nullptr ) {
+    m_ropnbin.resize(m_pgh->nrop(), 0);
+  }
+}
 
 //**********************************************************************
 
@@ -69,6 +83,14 @@ int ChannelHits::addSignal(Channel chan, Tick tick, Signal signal) {
   SignalTickMap& ticksig = m_ticksig[chan];
   if ( ticksig.find(tick) == ticksig.end() ) {
     ticksig[tick] = signal;
+    if ( m_pgh != nullptr ) {
+      Index irop = m_pgh->channelRop(chan);
+      if ( irop < m_ropnbin.size() ) {
+        ++m_ropnbin[irop];
+      } else {
+        cout << myname << "Channel " << chan << " does not have a ROP." << endl;
+      }
+    }
   } else {
     ticksig[tick] += signal;
   }
@@ -80,9 +102,6 @@ int ChannelHits::addSignal(Channel chan, Tick tick, Signal signal) {
 int ChannelHits::addSimChannel(const SimChannel& simchan, unsigned int tid) {
   const string myname = "ChannelHits::addSimChannel: ";
   Channel chan = simchan.Channel();
-  bool havechan = m_ticksig.find(chan) != m_ticksig.end();
-  SignalTickMap newticksig;
-  SignalTickMap& ticksig = havechan ? m_ticksig[chan] : newticksig;
   auto const& tickides = simchan.TDCIDEMap();
   if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
   for ( auto const& tickide : tickides ) {
@@ -95,19 +114,12 @@ int ChannelHits::addSimChannel(const SimChannel& simchan, unsigned int tid) {
         if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
         if ( m_tickMin == badTick() || tick < m_tickMin ) m_tickMin = tick;
         if ( m_tickMax == badTick() || tick > m_tickMax ) m_tickMax = tick;
-        if ( ticksig.find(tick) == ticksig.end() ) {
-          ticksig[tick] = sig;
-        } else {
-          ticksig[tick] += sig;
-        }
+        addSignal(chan, tick, sig);
       } else {
         if ( dbg() > 1 ) std::cout << myname << "  Skipping track " << ide.trackID << endl;
       }
     }  // End loop over IDE's for this tick
   }  // End loop over ticks for this sim channel
-  if ( !havechan && ticksig.size() ) {
-    m_ticksig[chan] = ticksig;
-  }
   return 0;
 }
 
@@ -160,6 +172,13 @@ const ChannelHits::TickChannelMap& ChannelHits::tickSignalMap() const {
 
 const ChannelHits::HitChannelMap& ChannelHits::hitSignalMap() const {
   return m_hitsig;
+}
+
+//**********************************************************************
+
+Index ChannelHits::ropNbin(Index irop) const {
+  if ( irop >=  m_ropnbin.size() ) return 0;
+  return m_ropnbin[irop];
 }
 
 //**********************************************************************
@@ -246,12 +265,51 @@ Signal ChannelHits::hitSignal() const {
 
 //**********************************************************************
 
-ostream& ChannelHits::print(ostream& out, int detail, string hdrprefix, string prefix) const {
+int ChannelHits::fillChannelTickHist(TH2* ph) const {
+  for ( const auto& chanticksigs : tickSignalMap() ) {
+    unsigned int chan = chanticksigs.first;
+    for ( const auto& ticksig : chanticksigs.second ) {
+      unsigned int tick = ticksig.first;
+      double sig = ticksig.second;
+      ph->Fill(tick, chan, sig);
+    }
+  }
+  return 0;
+}
+
+//**********************************************************************
+
+int ChannelHits::fillRopChannelTickHist(TH2* ph, Index irop) const {
+  const int dbg = 1;
+  const string myname = "ChannelHits::fillRopChannelTickHist: ";
+  if ( m_pgh == nullptr ) return -1;
+  if ( dbg ) cout << myname << "Filling histogram " << ph->GetName() << endl;
+  for ( const auto& chanticksigs : tickSignalMap() ) {
+    unsigned int chan = chanticksigs.first;
+    if ( m_pgh->channelRop(chan)  == irop ) {
+      Index ropchan = chan - m_pgh->ropFirstChannel(irop);
+      for ( const auto& ticksig : chanticksigs.second ) {
+        unsigned int tick = ticksig.first;
+        double sig = ticksig.second;
+        cout << myname << "ROPchan, tick, sig = " << ropchan << ", " << tick << ", " << sig << endl;
+        ph->Fill(tick, ropchan, sig);
+      }
+    }
+  }
+  return 0;
+}
+
+//**********************************************************************
+
+ostream& ChannelHits::print(ostream& out, int fulldetail, string hdrprefix, string prefix) const {
+  int detail2 = fulldetail/10;
+  int detail1 = fulldetail - detail2*10;
+  cout << "DETAIL: " << fulldetail << ", " << detail1 << ", " << detail2 << endl;
   // Line for each channel displaying the time range(s) and signal
-  if ( detail == 0 ) {
+  if ( detail1 == 0 ) {
     out << hdrprefix << "ChannelHits map has " << channelCount() << " channels with "
         << hitCount() << " hits and " << tickCount() << " ticks." << endl;
-  } else if ( detail == 1 ) {
+  } else if ( detail1 == 1 ) {
     out << hdrprefix << "ChannelHits map has " << channelCount() << " channels:" << endl;
     Tick badtick = badTick();
     for ( const auto& echan : tickSignalMap() ) {
@@ -289,7 +347,7 @@ ostream& ChannelHits::print(ostream& out, int detail, string hdrprefix, string p
       }
     }  // End loop over channels
   // Line for each hit displaying the time range(s) and signal
-  } else if ( detail == 2 ) {
+  } else if ( detail1 == 2 ) {
     out << prefix << "ChannelHits map has " << hitCount() << " channels:" << endl;
     if ( hitSignalMap().size() == 0 ) {
       out << prefix << "  Hit signal map is empty." << endl;
@@ -305,7 +363,7 @@ ostream& ChannelHits::print(ostream& out, int detail, string hdrprefix, string p
       }  // End loop over hits.
     }  // End loop over channels.
   // Line for each channel displaying the time range(s) and signal
-  } else if ( detail == 3 ) {
+  } else if ( detail1 == 3 ) {
     out << prefix << "ChannelHits map has " << tickCount() << " ticks:" << endl;
     for ( const auto& echan : tickSignalMap() ) {
       Channel chan = echan.first;
@@ -317,7 +375,17 @@ ostream& ChannelHits::print(ostream& out, int detail, string hdrprefix, string p
       }
     }  // End loop over channels.
   } else {
-    out << prefix << "  Invalid print option: " << detail << endl;
+    out << prefix << "  Invalid print option: " << fulldetail << endl;
+    return out;
+  }
+  // Print ROP counts.
+  if ( detail2 == 1 ) {
+    if ( m_ropnbin.size() ) {
+      out << prefix << "  ROP      Name    Nbin" << endl;
+      for ( Index irop=0; irop<m_ropnbin.size(); ++irop ) {
+        out << prefix << setw(5) << irop << setw(10) << m_pgh->ropName(irop) << setw(8) << m_ropnbin[irop] << endl;
+      }
+    }
   }
   return out;
 }
