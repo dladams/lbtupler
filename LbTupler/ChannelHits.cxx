@@ -5,6 +5,7 @@
 #include "TH2.h"
 #include "SimulationBase/MCParticle.h"
 #include "Simulation/SimChannel.h"
+#include "RecoBase/Hit.h"
 #include "GeoHelper.h"
 
 using std::string;
@@ -94,6 +95,62 @@ int ChannelHits::addSignal(Channel chan, Tick tick, Signal signal) {
   } else {
     ticksig[tick] += signal;
   }
+  return 0;
+}
+
+//**********************************************************************
+
+int ChannelHits::addHit(const recob::Hit& rhit, int dbg) {
+  const string myname = "ChannelHits::addHit: ";
+  Index chan = rhit.Channel();
+  Tick tick1 = rhit.StartTick();
+  Tick tick2 = rhit.EndTick();
+  Signal sig = rhit.Integral();
+  double tick0 = rhit.PeakTime();
+  double sigma = rhit.RMS();
+  if ( dbg > 0 ) cout << myname << chan << ": " << tick1 << "-" << tick2
+                      << " peak=" << tick0
+                      << " +/- " << sigma
+                      << " signal=" << sig
+                      << endl;
+  HitVector& hits = m_hitsig[chan];
+  hits.emplace(hits.end(), tick1, tick2, sig);
+  // Find the signal fraction in each tick bin and add it to the signal map.
+  double sigsum = 0.0;
+  Tick ntick = tick2 - tick1 + 1;
+  if ( ntick == 1 ) {
+    // All signal in one bin.
+    sigsum += sig;
+    addSignal(chan, tick1, sig);
+  } else if ( ntick == 2 ) {
+    // Linear division between bins.
+    double sigbin = (tick0 - tick1 -0.5)*sig;
+    sigsum += sigbin;
+    addSignal(chan, tick1, sigbin);
+    sigbin = sig - sigbin;
+    sigsum += sigbin;
+    addSignal(chan, tick2, sigbin);
+  } else {
+    // Gaussian distribution of signal.
+    if ( sigma <= 0.0 ) {
+      cout << myname << "Input hit has invalid sigma: " << sigma << endl;
+      return 1;
+    }
+    double fac = 1.0/(sqrt(2.0)*sigma);
+    for ( Tick tick=tick1; tick<=tick2; ++tick ) {
+      double x1 = fac*fabs(tick-tick0);
+      double erf1 = TMath::Erf(x1);
+      double x2 = fac*fabs(tick+1.0-tick0);
+      double erf2 = TMath::Erf(x2);
+      bool inpeakbin = tick0 > tick && tick0 < tick+1.0;
+      double erfbin = inpeakbin ? erf1 + erf2 : fabs(erf2 - erf1);
+      double sigbin = 0.5*erfbin*sig;
+      sigsum += sigbin;
+      if ( dbg > 2 ) cout << myname << "  " << tick << ": " << sigbin << endl;
+      addSignal(chan, tick, sigbin);
+    }
+  }
+  if ( dbg > 1 ) cout << myname << "  (Bin sum)/integral = " << sigsum << "/" << sig << " = " << sigsum/sig << endl;
   return 0;
 }
 

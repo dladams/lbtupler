@@ -1454,6 +1454,47 @@ void LbTupler::analyze(const art::Event& event) {
       if ( fhistusede ) wt *= adc2de(ichan);
       ph->Fill(hit.PeakTime(), hit.Channel(), wt);
     }
+
+    // Put all hits into a HitsChannel object.
+    ChannelHits hitsChannelHits(fgeohelp);
+    for ( auto const& hit : (*hitsHandle) ) {
+      hitsChannelHits.addHit(hit, 0);
+    }
+
+    // Create the new hit histograms.
+    TH2* phallhist = nullptr;
+    {
+      int nchan = fGeometry->Nchannels();
+      int ntick = ftdcTickMax-ftdcTickMin;
+      string hname = "h" + sevtf + "hsgall";
+      string title = "Hits for event " + sevt
+                     + ";TDC tick;Channel;ADC counts";
+      phallhist = tfs->make<TH2F>(hname.c_str(), title.c_str(),
+                                  ntick, ftdcTickMin, ftdcTickMax,
+                                  nchan, 0, nchan);
+      phallhist->GetZaxis()->SetRangeUser(0.0, 150);
+      phallhist->SetContour(ncontour);
+      phallhist->SetStats(0);
+    }
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      int nchan = geohelp.ropNChannel(irop);
+      int ntick = ftdcTickMax-ftdcTickMin;
+      string hname = "h" + sevtf + "hsg" + geohelp.ropName(irop);
+      string title = "Hits for APA plane " + geohelp.ropName(irop) + " event " + sevt
+                     + ";TDC tick;Channel;ADC counts";
+      if ( fdbg > 1 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
+                          << " TDC bins " << " and " << nchan << " channel bins" << endl;
+      TH2* ph = tfs->make<TH2F>(hname.c_str(), title.c_str(),
+                                ntick, ftdcTickMin, ftdcTickMax,
+                                nchan, 0, nchan);
+      ph->GetZaxis()->SetRangeUser(0.0, 150);
+      ph->SetContour(ncontour);
+      ph->SetStats(0);
+      hitsChannelHits.fillRopChannelTickHist(ph,irop);
+      hitsChannelHits.fillChannelTickHist(phallhist);
+    }
+    hitsChannelHits.print(cout, 12, myname + "  ");
+
   }  // end DoHits
 
   //************************************************************************

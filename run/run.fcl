@@ -2,6 +2,9 @@
 
 physics.analyzers.LbTupler.DebugLevel: 1
 
-physics.analyzers.LbTupler.DoRaw: true
+physics.analyzers.LbTupler.DoMCParticles:    true
+physics.analyzers.LbTupler.DoSimChannels:   false
+physics.analyzers.LbTupler.DoRaw:           false
+physics.analyzers.LbTupler.DoHits:          false
 
 physics.analyzers.LbTupler.TdcTickMax: 32000

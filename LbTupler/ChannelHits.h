@@ -11,6 +11,9 @@
 namespace sim {
 class SimChannel;
 }
+namespace recob {
+class Hit;
+}
 class TH2;
 class GeoHelper;
 
@@ -60,6 +63,9 @@ public:
 
   // Add contributions from a SimChannel for track tid.
   int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
+
+  // Add a recob::Hit and its signals.
+  int addHit(const recob::Hit& hit, int verbose =0);
 
   // Build hits from the tick energy deposits in each channel.
   // A hit is a contiguous set of ticks.
