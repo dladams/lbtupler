@@ -1,6 +1,6 @@
-// ChannelHits.cxx
+// TpcSignalMap.cxx
 
-#include "ChannelHits.h"
+#include "TpcSignalMap.h"
 #include <iomanip>
 #include "TH2.h"
 #include "SimulationBase/MCParticle.h"
@@ -16,10 +16,10 @@ using std::ostream;
 using simb::MCParticle;
 using sim::SimChannel;
 
-typedef ChannelHits::Tick    Tick;
-typedef ChannelHits::Channel Channel;
-typedef ChannelHits::Signal  Signal;
-typedef ChannelHits::Index   Index;
+typedef TpcSignalMap::Tick    Tick;
+typedef TpcSignalMap::Channel Channel;
+typedef TpcSignalMap::Signal  Signal;
+typedef TpcSignalMap::Index   Index;
 
 //**********************************************************************
 // Local definitions.
@@ -33,38 +33,38 @@ int dbg() { return 0; }
 // Sub class.
 //**********************************************************************
 
-ChannelHits::Hit::Hit()
+TpcSignalMap::Hit::Hit()
 : tick1(badTick()), tick2(badTick()), signal(0.0) { }
 
 //**********************************************************************
 
-ChannelHits::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
+TpcSignalMap::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
 : tick1(atick1), tick2(atick2), signal(asignal) { }
 
 //**********************************************************************
 // Main class.
 //**********************************************************************
 
-Channel ChannelHits::badChannel() {
+Channel TpcSignalMap::badChannel() {
   return std::numeric_limits<Channel>::max();
 }
 
 //**********************************************************************
 
-Tick ChannelHits::badTick() {
+Tick TpcSignalMap::badTick() {
   return std::numeric_limits<Tick>::min();
 }
 
 //**********************************************************************
 
-ChannelHits::ChannelHits()
+TpcSignalMap::TpcSignalMap()
 : m_pgh(nullptr),
   m_tickMin(badTick()),
   m_tickMax(badTick()) { }
 
 //**********************************************************************
 
-ChannelHits::ChannelHits(const GeoHelper* pgh)
+TpcSignalMap::TpcSignalMap(const GeoHelper* pgh)
 : m_pgh(pgh),
   m_tickMin(badTick()),
   m_tickMax(badTick()) {
@@ -75,8 +75,8 @@ ChannelHits::ChannelHits(const GeoHelper* pgh)
 
 //**********************************************************************
 
-int ChannelHits::addSignal(Channel chan, Tick tick, Signal signal) {
-  const string myname = "ChannelHits::add: ";
+int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal) {
+  const string myname = "TpcSignalMap::add: ";
   if ( dbg() ) std::cout << myname
                          << "Channel " << chan << ", tick " << tick
                          << " has signal " << signal << endl;
@@ -100,8 +100,8 @@ int ChannelHits::addSignal(Channel chan, Tick tick, Signal signal) {
 
 //**********************************************************************
 
-int ChannelHits::addHit(const recob::Hit& rhit, int dbg) {
-  const string myname = "ChannelHits::addHit: ";
+int TpcSignalMap::addHit(const recob::Hit& rhit, int dbg) {
+  const string myname = "TpcSignalMap::addHit: ";
   Index chan = rhit.Channel();
   Tick tick1 = rhit.StartTick();
   Tick tick2 = rhit.EndTick();
@@ -156,8 +156,23 @@ int ChannelHits::addHit(const recob::Hit& rhit, int dbg) {
 
 //**********************************************************************
 
-int ChannelHits::addSimChannel(const SimChannel& simchan, unsigned int tid) {
-  const string myname = "ChannelHits::addSimChannel: ";
+int TpcSignalMap::addCluster(const AssociatedHits& hits, int dbg) {
+  const string myname = "TpcSignalMap::addCluster: ";
+  for ( const auto& phit : hits ) {
+    if ( phit.isNull() ) {
+      cout << myname << "WARNING: Hit is missing." << endl;
+      continue;
+    }
+    const recob::Hit& hit = *phit;
+    addHit(hit, dbg);
+  }
+  return 0;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
+  const string myname = "TpcSignalMap::addSimChannel: ";
   Channel chan = simchan.Channel();
   auto const& tickides = simchan.TDCIDEMap();
   if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
@@ -182,8 +197,8 @@ int ChannelHits::addSimChannel(const SimChannel& simchan, unsigned int tid) {
 
 //**********************************************************************
 
-int ChannelHits::buildHits() {
-  const string myname = "ChannelHits::buildHits: ";
+int TpcSignalMap::buildHits() {
+  const string myname = "TpcSignalMap::buildHits: ";
   // Loop over channels.
   for ( const auto ent : m_ticksig ) {
     Channel chan = ent.first;
@@ -221,64 +236,64 @@ int ChannelHits::buildHits() {
 
 //**********************************************************************
 
-const ChannelHits::TickChannelMap& ChannelHits::tickSignalMap() const {
+const TpcSignalMap::TickChannelMap& TpcSignalMap::tickSignalMap() const {
   return m_ticksig;
 }
 
 //**********************************************************************
 
-const ChannelHits::HitChannelMap& ChannelHits::hitSignalMap() const {
+const TpcSignalMap::HitChannelMap& TpcSignalMap::hitSignalMap() const {
   return m_hitsig;
 }
 
 //**********************************************************************
 
-Index ChannelHits::ropNbin(Index irop) const {
+Index TpcSignalMap::ropNbin(Index irop) const {
   if ( irop >=  m_ropnbin.size() ) return 0;
   return m_ropnbin[irop];
 }
 
 //**********************************************************************
 
-Channel ChannelHits::channelMin() const {
+Channel TpcSignalMap::channelMin() const {
   if ( m_ticksig.size() == 0 ) return badChannel();
   return m_ticksig.begin()->first;
 }
 
 //**********************************************************************
 
-Channel ChannelHits::channelMax() const {
+Channel TpcSignalMap::channelMax() const {
   if ( m_ticksig.size() == 0 ) return badChannel();
   return m_ticksig.rbegin()->first;
 }
 
 //**********************************************************************
 
-Tick ChannelHits::tickMin() const {
+Tick TpcSignalMap::tickMin() const {
   return m_tickMin;
 }
 
 //**********************************************************************
 
-Tick ChannelHits::tickMax() const {
+Tick TpcSignalMap::tickMax() const {
   return m_tickMax;
 }
 
 //**********************************************************************
 
-unsigned int ChannelHits::size() const {
+unsigned int TpcSignalMap::size() const {
   return tickCount();
 }
 
 //**********************************************************************
 
-unsigned int ChannelHits::channelCount() const {
+unsigned int TpcSignalMap::channelCount() const {
   return tickSignalMap().size();
 }
 
 //**********************************************************************
 
-unsigned int ChannelHits::tickCount() const {
+unsigned int TpcSignalMap::tickCount() const {
   unsigned int nbin = 0;
   for ( const auto& echan : tickSignalMap() ) {
     nbin += echan.second.size();
@@ -288,7 +303,7 @@ unsigned int ChannelHits::tickCount() const {
 
 //**********************************************************************
 
-unsigned int ChannelHits::hitCount() const {
+unsigned int TpcSignalMap::hitCount() const {
   unsigned int nbin = 0;
   for ( const auto& echan : hitSignalMap() ) {
     nbin += echan.second.size();
@@ -298,7 +313,7 @@ unsigned int ChannelHits::hitCount() const {
 
 //**********************************************************************
 
-Signal ChannelHits::tickSignal() const {
+Signal TpcSignalMap::tickSignal() const {
   Signal sig = 0.0;
   for ( const auto& echan : tickSignalMap() ) {
     for ( const auto& etick : echan.second ) {
@@ -310,7 +325,7 @@ Signal ChannelHits::tickSignal() const {
 
 //**********************************************************************
 
-Signal ChannelHits::hitSignal() const {
+Signal TpcSignalMap::hitSignal() const {
   Signal sig = 0.0;
   for ( const auto& echan : hitSignalMap() ) {
     for ( const auto& ehit : echan.second ) {
@@ -322,7 +337,7 @@ Signal ChannelHits::hitSignal() const {
 
 //**********************************************************************
 
-int ChannelHits::fillChannelTickHist(TH2* ph) const {
+int TpcSignalMap::fillChannelTickHist(TH2* ph) const {
   for ( const auto& chanticksigs : tickSignalMap() ) {
     unsigned int chan = chanticksigs.first;
     for ( const auto& ticksig : chanticksigs.second ) {
@@ -336,9 +351,9 @@ int ChannelHits::fillChannelTickHist(TH2* ph) const {
 
 //**********************************************************************
 
-int ChannelHits::fillRopChannelTickHist(TH2* ph, Index irop) const {
-  const int dbg = 1;
-  const string myname = "ChannelHits::fillRopChannelTickHist: ";
+int TpcSignalMap::fillRopChannelTickHist(TH2* ph, Index irop) const {
+  const int dbg = 0;
+  const string myname = "TpcSignalMap::fillRopChannelTickHist: ";
   if ( m_pgh == nullptr ) return -1;
   if ( dbg ) cout << myname << "Filling histogram " << ph->GetName() << endl;
   for ( const auto& chanticksigs : tickSignalMap() ) {
@@ -348,7 +363,8 @@ int ChannelHits::fillRopChannelTickHist(TH2* ph, Index irop) const {
       for ( const auto& ticksig : chanticksigs.second ) {
         unsigned int tick = ticksig.first;
         double sig = ticksig.second;
-        cout << myname << "ROPchan, tick, sig = " << ropchan << ", " << tick << ", " << sig << endl;
+        if ( dbg ) cout << myname << "ROPchan, tick, sig = " << ropchan
+                        << ", " << tick << ", " << sig << endl;
         ph->Fill(tick, ropchan, sig);
       }
     }
@@ -358,16 +374,15 @@ int ChannelHits::fillRopChannelTickHist(TH2* ph, Index irop) const {
 
 //**********************************************************************
 
-ostream& ChannelHits::print(ostream& out, int fulldetail, string hdrprefix, string prefix) const {
+ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, string prefix) const {
   int detail2 = fulldetail/10;
   int detail1 = fulldetail - detail2*10;
-  cout << "DETAIL: " << fulldetail << ", " << detail1 << ", " << detail2 << endl;
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
-    out << hdrprefix << "ChannelHits map has " << channelCount() << " channels with "
+    out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels with "
         << hitCount() << " hits and " << tickCount() << " ticks." << endl;
   } else if ( detail1 == 1 ) {
-    out << hdrprefix << "ChannelHits map has " << channelCount() << " channels:" << endl;
+    out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels:" << endl;
     Tick badtick = badTick();
     for ( const auto& echan : tickSignalMap() ) {
       Channel chan = echan.first;
@@ -405,7 +420,7 @@ ostream& ChannelHits::print(ostream& out, int fulldetail, string hdrprefix, stri
     }  // End loop over channels
   // Line for each hit displaying the time range(s) and signal
   } else if ( detail1 == 2 ) {
-    out << prefix << "ChannelHits map has " << hitCount() << " channels:" << endl;
+    out << prefix << "TpcSignalMap map has " << hitCount() << " hits:" << endl;
     if ( hitSignalMap().size() == 0 ) {
       out << prefix << "  Hit signal map is empty." << endl;
     }
@@ -421,7 +436,7 @@ ostream& ChannelHits::print(ostream& out, int fulldetail, string hdrprefix, stri
     }  // End loop over channels.
   // Line for each channel displaying the time range(s) and signal
   } else if ( detail1 == 3 ) {
-    out << prefix << "ChannelHits map has " << tickCount() << " ticks:" << endl;
+    out << prefix << "TpcSignalMap map has " << tickCount() << " ticks:" << endl;
     for ( const auto& echan : tickSignalMap() ) {
       Channel chan = echan.first;
       for ( const auto& etick : echan.second ) {
@@ -449,7 +464,7 @@ ostream& ChannelHits::print(ostream& out, int fulldetail, string hdrprefix, stri
 
 //**********************************************************************
 
-ostream& operator<<(const ChannelHits& rhs, ostream& out) {
+ostream& operator<<(const TpcSignalMap& rhs, ostream& out) {
   return rhs.print(out);
 }
 

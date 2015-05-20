@@ -1,10 +1,11 @@
 #include "LbTupler.fcl"
 
-physics.analyzers.LbTupler.DebugLevel: 1
+physics.analyzers.LbTupler.DebugLevel: 2
 
 physics.analyzers.LbTupler.DoMCParticles:    true
-physics.analyzers.LbTupler.DoSimChannels:   false
-physics.analyzers.LbTupler.DoRaw:           false
-physics.analyzers.LbTupler.DoHits:          false
+physics.analyzers.LbTupler.DoSimChannels:    true
+physics.analyzers.LbTupler.DoRaw:            true
+physics.analyzers.LbTupler.DoHits:           true
+physics.analyzers.LbTupler.DoClusters:       true
 
 physics.analyzers.LbTupler.TdcTickMax: 32000

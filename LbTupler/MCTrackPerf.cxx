@@ -81,7 +81,7 @@ int MCTrackPerf::rpdg() const {
 
 //**********************************************************************
 
-const ChannelHits& MCTrackPerf::hits() const {
+const TpcSignalMap& MCTrackPerf::hits() const {
   return m_hits;
 }
 

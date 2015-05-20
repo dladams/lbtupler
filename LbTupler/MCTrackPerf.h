@@ -8,7 +8,7 @@
 //
 // Class to hold the signals and hits associated with a MC particle or track.
 
-#include "ChannelHits.h"
+#include "TpcSignalMap.h"
 namespace simb {
 class MCParticle;
 }
@@ -20,10 +20,10 @@ class MCTrackPerf {
 
 public:
 
-  typedef ChannelHits::Index   Index;
-  typedef ChannelHits::Channel Channel;
-  typedef ChannelHits::Tick    Tick;
-  typedef ChannelHits::Signal  Signal;
+  typedef TpcSignalMap::Index   Index;
+  typedef TpcSignalMap::Channel Channel;
+  typedef TpcSignalMap::Tick    Tick;
+  typedef TpcSignalMap::Signal  Signal;
 
 public:
 
@@ -47,7 +47,7 @@ public:
   unsigned int trackID() const;
   int pdg() const;
   int rpdg() const;
-  const ChannelHits& hits() const;
+  const TpcSignalMap& hits() const;
 
   // Output stream.
   //   out - stream to insert output
@@ -68,7 +68,7 @@ private:
   int m_trackID;
   int m_pdg;
   int m_rpdg;
-  ChannelHits m_hits;
+  TpcSignalMap m_hits;
 
 };
 

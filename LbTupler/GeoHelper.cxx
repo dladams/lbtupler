@@ -3,6 +3,7 @@
 #include "GeoHelper.h"
 #include "Geometry/Geometry.h"
 #include "Utilities/DetectorProperties.h"
+#include "Utilities/LArProperties.h"
 #include "Geometry/TPCGeo.h"
 #include "Geometry/PlaneGeo.h"
 #include <iostream>
@@ -18,6 +19,8 @@ using std::setw;
 using std::vector;
 using std::set;
 using std::string;
+using util::LArProperties;
+using util::DetectorProperties;
 using geo::TPCGeo;
 using geo::PlaneID;
 using geo::PlaneGeo;
@@ -36,8 +39,8 @@ Index GeoHelper::badIndex() {
 
 //**********************************************************************
 
-GeoHelper::GeoHelper(const geo::Geometry* pgeo, util::DetectorProperties* pdetp, Status dbg)
-: m_pgeo(pgeo), m_pdetp(pdetp), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
+GeoHelper::GeoHelper(const geo::Geometry* pgeo, Status dbg)
+: m_pgeo(pgeo), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
   // Find the total number of TPC.
   for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
   // Fill the TPC info w/o ROP or APA.
@@ -53,6 +56,20 @@ GeoHelper::GeoHelper(const geo::Geometry* pgeo, util::DetectorProperties* pdetp,
     }
   }
   fillStandardApaMapping();
+}
+
+//**********************************************************************
+
+DetectorProperties& GeoHelper::detectorProperties() const {
+  static DetectorProperties& ref = *art::ServiceHandle<DetectorProperties>();
+  return ref;
+}
+
+//**********************************************************************
+
+LArProperties& GeoHelper::larProperties() const {
+  static LArProperties& ref = *art::ServiceHandle<LArProperties>();
+  return ref;
 }
 
 //**********************************************************************
@@ -97,11 +114,7 @@ PlanePositionVector GeoHelper::planePositions(const double postim[]) const {
     cout << myname << "ERROR: Geometry is null." << endl;
     return pps;
   }
-  if ( detectorProperties() == nullptr ) {
-    cout << myname << "ERROR: Detector properties is null." << endl;
-    return pps;
-  }
-  double samplingrate = detectorProperties()->SamplingRate();
+  double samplingrate = detectorProperties().SamplingRate();
   if ( samplingrate <= 0 ) {
     cout << myname << "ERROR: Invalid sampling rate." << endl;
     return pps;
@@ -112,7 +125,7 @@ PlanePositionVector GeoHelper::planePositions(const double postim[]) const {
   for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
     PlaneID tpp(tpcid, ipla);
     unsigned int irop = rop(tpp);
-    double tick = detectorProperties()->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
+    double tick = detectorProperties().ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
     double tickoff = postim[3]/samplingrate;
     tick += tickoff;
     if ( m_dbg > 2 ) cout << myname << "Tick offset: " << tickoff << " = " << postim[3] << "/" << samplingrate << endl;
@@ -241,6 +254,14 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   //out << prefix << setw(wlab) <<"TPC plane count: " << m_pgeo->Nplanes(itpc, icry) << endl;
   //out << prefix << setw(wlab) <<"TPC wire count: " << m_pgeo->Nwires(ipla, itpc, icry) << endl;
   //out << prefix << setw(wlab) <<"TPC view count: " << m_pgeo->Nviews() << endl;
+  // Show LAr properties.
+  double driftspeed = larProperties().DriftVelocity();
+  double samplingrate = detectorProperties().SamplingRate();
+  double samplingdriftspeed = driftspeed*samplingrate/1000.0;
+  if ( m_dbg > 0 ) cout << prefix << "LAr drift speed = " << driftspeed << " cm/us" << endl;
+  if ( m_dbg > 0 ) cout << prefix << "Sampling period = " << samplingrate << " ns" << endl;
+  if ( m_dbg > 0 ) cout << prefix << "Sampling speed = " << samplingdriftspeed << " cm/tick" << endl;
+
   return out;
 }
   

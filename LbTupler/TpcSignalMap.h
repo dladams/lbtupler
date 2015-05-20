@@ -1,4 +1,4 @@
-// ChannelHits.h
+// TpcSignalMap.h
 
 // Map of hits associated with channels. A hit is defined as a contiguous
 // set of ticks.
@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <iostream>
+#include "art/Framework/Core/FindManyP.h"
 
 namespace sim {
 class SimChannel;
@@ -17,7 +18,7 @@ class Hit;
 class TH2;
 class GeoHelper;
 
-class ChannelHits {
+class TpcSignalMap {
 
 public:
 
@@ -25,6 +26,7 @@ public:
   typedef int Tick;
   typedef unsigned int Index;
   typedef double Signal;
+  typedef std::vector<art::Ptr<recob::Hit>> AssociatedHits;
 
 public:
 
@@ -51,14 +53,14 @@ public:
   typedef std::vector<Index> IndexVector;
 
   // Default ctor.
-  ChannelHits();
+  TpcSignalMap();
 
   // Ctor from a geometry helper.
   // If this is used, then each channel (and thus each signal and hit)
   // is assigned to a ROP (APA readout plane).
-  ChannelHits(const GeoHelper* pgh);
+  TpcSignalMap(const GeoHelper* pgh);
 
-  // Add an energy deposit in a bin.
+  // Add a signal (energy deposit or ADC count) in a bin.
   int addSignal(Channel chan, Tick tick, Signal signal);
 
   // Add contributions from a SimChannel for track tid.
@@ -67,7 +69,10 @@ public:
   // Add a recob::Hit and its signals.
   int addHit(const recob::Hit& hit, int verbose =0);
 
-  // Build hits from the tick energy deposits in each channel.
+  // Add the hits and signals associated with a recob::Cluster.
+  int addCluster(const AssociatedHits& hits, int verbose =0);
+
+  // Build hits from the tick signals in each channel.
   // A hit is a contiguous set of ticks.
   int buildHits();
 
@@ -131,4 +136,4 @@ private:
 
 };
 
-std::ostream& operator<<(const ChannelHits& rhs, std::ostream& out);
+std::ostream& operator<<(const TpcSignalMap& rhs, std::ostream& out);

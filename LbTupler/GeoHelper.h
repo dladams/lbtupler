@@ -17,6 +17,7 @@ namespace geo {
 class Geometry;
 }
 namespace util {
+class LArProperties;
 class DetectorProperties;
 }
 class GeoHelper {
@@ -40,13 +41,16 @@ public:
 
   // Ctor from LArSoft geometry service and detector properties.
   // Note: DetectorProperties has non-const methods.
-  GeoHelper(const geo::Geometry* pgeo, util::DetectorProperties* pdetp =nullptr, Status dbg =0);
+  GeoHelper(const geo::Geometry* pgeo, Status dbg =0);
 
   // Return the geometry.
   const geo::Geometry* geometry() const { return m_pgeo; }
 
+  // Return the LAr properties.
+  util::LArProperties& larProperties() const;
+
   // Return the detector properties.
-  util::DetectorProperties* detectorProperties() const { return m_pdetp; }
+  util::DetectorProperties& detectorProperties() const;
 
   // Return the corners of the active TPC volume.
   Status tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const;
@@ -103,7 +107,6 @@ private:
 private:
 
   const geo::Geometry* m_pgeo;
-  util::DetectorProperties* m_pdetp;
   Status m_dbg;
   Index m_ntpc;                 // Total # TPCs in the detector
   Index m_ntpp;                 // Total # TPC planes in the detector
