@@ -74,6 +74,10 @@ TpcSignalMap::TpcSignalMap(const GeoHelper* pgh)
 
 //**********************************************************************
 
+TpcSignalMap::~TpcSignalMap() { }
+
+//**********************************************************************
+
 int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal) {
   const string myname = "TpcSignalMap::add: ";
   if ( dbg() ) std::cout << myname

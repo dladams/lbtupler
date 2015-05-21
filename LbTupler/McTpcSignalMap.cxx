@@ -1,6 +1,6 @@
-// MCTrackPerf.cxx
+// McTpcSignalMap.cxx
 
-#include "MCTrackPerf.h"
+#include "McTpcSignalMap.h"
 #include <iomanip>
 #include <sstream>
 #include "SimulationBase/MCParticle.h"
@@ -16,10 +16,10 @@ using std::ostringstream;
 using simb::MCParticle;
 using sim::SimChannel;
 
-typedef MCTrackPerf::Tick    Tick;
-typedef MCTrackPerf::Channel Channel;
-typedef MCTrackPerf::Signal  Signal;
-typedef MCTrackPerf::Index   Index;
+typedef McTpcSignalMap::Tick    Tick;
+typedef McTpcSignalMap::Channel Channel;
+typedef McTpcSignalMap::Signal  Signal;
+typedef McTpcSignalMap::Index   Index;
 
 //**********************************************************************
 // Local definitions.
@@ -30,79 +30,55 @@ namespace {
 
 //**********************************************************************
 
-MCTrackPerf::MCTrackPerf()
+McTpcSignalMap::McTpcSignalMap()
 : m_trackID(-1),
   m_pdg(0),
   m_rpdg(0) { }
 
 //**********************************************************************
 
-MCTrackPerf::MCTrackPerf(const MCParticle& par, const GeoHelper* pgh)
-: m_trackID(par.TrackId()),
+McTpcSignalMap::McTpcSignalMap(const MCParticle& par, const GeoHelper* pgh)
+: TpcSignalMap(pgh),
+  m_trackID(par.TrackId()),
   m_pdg(par.PdgCode()),
-  m_rpdg(reducedPDG(m_pdg)),
-  m_hits(pgh) { }
+  m_rpdg(reducedPDG(m_pdg)) { }
 
 //**********************************************************************
 
-int MCTrackPerf::addSignal(Channel chan, Tick tick, Signal signal) {
-  return m_hits.addSignal(chan, tick, signal);
+int McTpcSignalMap::addSimChannel(const sim::SimChannel& sch) {
+  return TpcSignalMap::addSimChannel(sch, trackID());
 }
 
 //**********************************************************************
 
-int MCTrackPerf::addSimChannel(const SimChannel& simchan) {
-  return m_hits.addSimChannel(simchan, trackID());
-}
-
-//**********************************************************************
-
-int MCTrackPerf::buildHits() {
-  return m_hits.buildHits();
-}
-
-//**********************************************************************
-
-unsigned int MCTrackPerf::trackID() const {
+unsigned int McTpcSignalMap::trackID() const {
   return m_trackID;
 }
 
 //**********************************************************************
 
-int MCTrackPerf::pdg() const {
+int McTpcSignalMap::pdg() const {
   return m_pdg;
 }
 
 //**********************************************************************
 
-int MCTrackPerf::rpdg() const {
+int McTpcSignalMap::rpdg() const {
   return m_rpdg;
 }
 
 //**********************************************************************
 
-const TpcSignalMap& MCTrackPerf::hits() const {
-  return m_hits;
-}
-
-//**********************************************************************
-
-int MCTrackPerf::fillRopChannelTickHist(TH2* ph, Index irop) const {
-  return m_hits.fillRopChannelTickHist(ph, irop);
-}
-
-//**********************************************************************
-
-ostream& MCTrackPerf::print(ostream& out, int detail, string prefix) const {
+ostream& McTpcSignalMap::print(ostream& out, int detail, string prefix) const {
   ostringstream sout;
   sout << prefix << "MCParticle " << setw(3) << trackID()
         << ", PDG=" << setw(6) << pdg() << ", RPDG=" << setw(4) << rpdg() << ", ";
-  return m_hits.print(out, detail, sout.str(), prefix);
+  return TpcSignalMap::print(out, detail, sout.str(), prefix);
 }
 
 //**********************************************************************
 
-ostream& operator<<(const MCTrackPerf& rhs, ostream& out) {
+ostream& operator<<(const McTpcSignalMap& rhs, ostream& out) {
   return rhs.print(out);
 }
 

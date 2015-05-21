@@ -22,7 +22,7 @@
 #include "intProcess.h"
 #include "reducedPDG.h"
 #include "GeoHelper.h"
-#include "MCTrackPerf.h"
+#include "McTpcSignalMap.h"
 
 using std::cout;
 using std::endl;
@@ -181,7 +181,7 @@ int MCTrajectoryFollower::endEvent() {
 
 //************************************************************************
 
-int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, MCTrackPerf* pmctp) {
+int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, McTpcSignalMap* pmtsm) {
   const string myname = "MCTrajectory::addMCParticle: ";
   if ( m_geohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
@@ -416,7 +416,7 @@ int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, MCTrackPerf*
           }
           if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
           if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
-          if ( pmctp != nullptr ) pmctp->addSignal(pp.channel, pp.tick, destep);
+          if ( pmtsm != nullptr ) pmtsm->addSignal(pp.channel, pp.tick, destep);
         }
       }
       // If this and the last point are in the detector, increment the detector path length.

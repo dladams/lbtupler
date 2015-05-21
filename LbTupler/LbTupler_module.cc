@@ -59,7 +59,7 @@
 // Local includes.
 #include "reducedPDG.h"
 #include "intProcess.h"
-#include "MCTrackPerf.h"
+#include "McTpcSignalMap.h"
 #include "PlanePosition.h"
 #include "GeoHelper.h"
 #include "ChannelTickHistCreator.h"
@@ -130,7 +130,7 @@ private:
   int fdbg;                        // Debug level. Larger for more log noise.
   bool fDoTruth;                   // Read truth container.
   bool fDoMCParticles;             // Create MC particle tree and histograms.
-  bool fDoMCTrackPerf;             // Evalueate MC track performance.
+  bool fDoMcTpcSignalMap;             // Evalueate MC track performance.
   bool fDoSimChannels;             // Create the SimChannel performance objects and histograms.
   bool fDoSimChannelTree;          // Create the SimChannel tree.
   bool fDoRaw;                     // Create the RawDigits tree and histograms.
@@ -330,7 +330,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fdbg                     = p.get<int>        ("DebugLevel");
   fDoTruth                 = p.get<bool>("DoTruth");
   fDoMCParticles           = p.get<bool>("DoMCParticles");
-  fDoMCTrackPerf           = p.get<bool>("DoMCTrackPerf");
+  fDoMcTpcSignalMap           = p.get<bool>("DoMcTpcSignalMap");
   fDoSimChannels           = p.get<bool>("DoSimChannels");
   fDoSimChannelTree        = p.get<bool>("DoSimChannelTree");
   fDoRaw                   = p.get<bool>("DoRaw");
@@ -363,7 +363,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << myname << setw(wlab) << "Module properties:" << endl;
     cout << prefix << setw(wlab) << "DebugLevel" << sep << fdbg << endl;
     cout << prefix << setw(wlab) << "DoMCParticles" << sep << fDoMCParticles << endl;
-    cout << prefix << setw(wlab) << "DoMCTrackPerf" << sep << fDoMCTrackPerf << endl;
+    cout << prefix << setw(wlab) << "DoMcTpcSignalMap" << sep << fDoMcTpcSignalMap << endl;
     cout << prefix << setw(wlab) << "DoSimChannels" << sep << fDoSimChannels << endl;
     cout << prefix << setw(wlab) << "DoSimChannelTree" << sep << fDoSimChannelTree << endl;
     cout << prefix << setw(wlab) << "DoRaw" << sep << fDoRaw << endl;
@@ -467,7 +467,7 @@ void LbTupler::analyze(const art::Event& event) {
 
   // Get all the MC particles for the event.
   art::Handle< vector<simb::MCParticle> > particleHandle;
-  if ( fDoMCParticles || fDoMCTrackPerf ) {
+  if ( fDoMCParticles || fDoMcTpcSignalMap ) {
     event.getByLabel(fParticleProducerLabel, particleHandle);
     if ( fdbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
   }
@@ -480,9 +480,9 @@ void LbTupler::analyze(const art::Event& event) {
   }
 
   // Create vector of selected MC particles for analysis.
-  vector<MCTrackPerf> selectedMCTrackPerfsMC;    // Filled with MCParticle hits.
-  vector<MCTrackPerf> selectedMCTrackPerfsSC;    // Filled with SimChannel.
-  if ( fDoMCTrackPerf ) {
+  vector<McTpcSignalMap> selectedMcTpcSignalMapsMC;    // Filled with MCParticle hits.
+  vector<McTpcSignalMap> selectedMcTpcSignalMapsSC;    // Filled with SimChannel.
+  if ( fDoMcTpcSignalMap ) {
     if ( fdbg > 1 ) cout << myname << "Selecting MC particles." << endl;
     for ( auto const& particle : (*particleHandle) ) {
       int trackid = particle.TrackId();
@@ -493,13 +493,13 @@ void LbTupler::analyze(const art::Event& event) {
       if ( proc == 0 && rpdg < 7 ) {
         if ( fdbg > 1 ) cout << myname << "  Selecting";
         // Add selected track to the MCParticle performance list.
-        selectedMCTrackPerfsMC.emplace(selectedMCTrackPerfsMC.end(), *&particle, fgeohelp);
+        selectedMcTpcSignalMapsMC.emplace(selectedMcTpcSignalMapsMC.end(), *&particle, fgeohelp);
         // Fill the MC performance information including signal map.
-        MCTrackPerf& mctp = selectedMCTrackPerfsMC.back();
+        McTpcSignalMap& mctp = selectedMcTpcSignalMapsMC.back();
         m_pmctraj->addMCParticle(particle, &mctp);
         mctp.buildHits();
         // Add selected track to the SimHists performance list.
-        selectedMCTrackPerfsSC.emplace(selectedMCTrackPerfsSC.end(), *&particle, fgeohelp);
+        selectedMcTpcSignalMapsSC.emplace(selectedMcTpcSignalMapsSC.end(), *&particle, fgeohelp);
       } else {
         if ( fdbg > 1 ) cout << myname << "  Rejecting";
       }
@@ -513,11 +513,11 @@ void LbTupler::analyze(const art::Event& event) {
     int flag = 0;
     if ( fdbg > 2 ) flag = 11;
     if ( fdbg > 0 ) cout << myname << "Summary of selected MC track performance objects (size = "
-                         << selectedMCTrackPerfsMC.size() << "):" << endl;
-    for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
+                         << selectedMcTpcSignalMapsMC.size() << "):" << endl;
+    for ( auto& mctrackperf : selectedMcTpcSignalMapsMC ) {
       mctrackperf.print(cout, flag, myname + "  ");
     }  // End loop over selected MC tracks
-  }  // end DoMCTrackPerf
+  }  // end DoMcTpcSignalMap
 
   // MCParticles histograms and tree.
   if ( fDoMCParticles ) {
@@ -527,7 +527,7 @@ void LbTupler::analyze(const art::Event& event) {
     for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
       TH2* ph = hcreateSimPeak.create("mcp" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                       "MC particle signals for " + geohelp.ropName(irop));
-      for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
+      for ( auto& mctrackperf : selectedMcTpcSignalMapsMC ) {
         mctrackperf.fillRopChannelTickHist(ph, irop);
       }
       if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
@@ -535,15 +535,15 @@ void LbTupler::analyze(const art::Event& event) {
 
     // Create the channel-tick bin histograms for each selected MC particle.
     if ( fdbg > 1 ) cout << myname << "Create and fill MCParticle histograms for each selected track." << endl;
-    for ( auto& mctrackperf : selectedMCTrackPerfsMC ) {
+    for ( auto& mctrackperf : selectedMcTpcSignalMapsMC ) {
       ostringstream ssmcp;
       ssmcp << mctrackperf.trackID();
       string smcp = ssmcp.str();
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        if ( mctrackperf.hits().ropNbin(irop) == 0 ) continue;
+        if ( mctrackperf.ropNbin(irop) == 0 ) continue;
         TH2* ph = hcreateSimPeak.create("mcp" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                         "MC particle signals for " + geohelp.ropName(irop),
-                                        "mct" + smcp, "particle " + smcp, mctrackperf.hits().tickRange());
+                                        "mct" + smcp, "particle " + smcp, mctrackperf.tickRange());
         mctrackperf.fillRopChannelTickHist(ph, irop);
         if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
       }  // End loop over ROPs
@@ -560,7 +560,7 @@ void LbTupler::analyze(const art::Event& event) {
     // Get all the simulated channels for the event. These channels
     // include the energy deposited for each track.
     art::Handle<vector<sim::SimChannel>> simChannelHandle;
-    if ( fDoMCParticles || fDoSimChannels || fDoMCTrackPerf ) {
+    if ( fDoMCParticles || fDoSimChannels || fDoMcTpcSignalMap ) {
       event.getByLabel(fSimulationProducerLabel, simChannelHandle);
       if ( fdbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
     }
@@ -571,10 +571,10 @@ void LbTupler::analyze(const art::Event& event) {
     }
 
     // Add sim channel info and hits to the sim channel performance objects.
-    if ( fDoMCTrackPerf ) {
+    if ( fDoMcTpcSignalMap ) {
       if ( fdbg > 0 ) cout << myname << "Adding sim channels and hits to SimChannel performance objects (size = "
                           << simChannelHandle->size() << ")" << endl;
-      for ( auto& mctp : selectedMCTrackPerfsSC ) {
+      for ( auto& mctp : selectedMcTpcSignalMapsSC ) {
         // Add the sim channel info to the selected tracks.
         for ( auto const& simchan : (*simChannelHandle) ) {
           mctp.addSimChannel(*&simchan);
@@ -586,12 +586,12 @@ void LbTupler::analyze(const art::Event& event) {
       if ( fdbg > 2 ) flag = 11;
       if ( fdbg > 0 ) {
         cout << myname << "Summary of selected-track SimChannel performance objects (size = "
-             << selectedMCTrackPerfsSC.size() << ")" << endl;
-        for ( auto& mctp : selectedMCTrackPerfsSC ) {
+             << selectedMcTpcSignalMapsSC.size() << ")" << endl;
+        for ( auto& mctp : selectedMcTpcSignalMapsSC ) {
           mctp.print(cout, flag, myname + "  ");
         }  // End loop over selected MC tracks
       }
-    }  // end DoMCTrackPerf
+    }  // end DoMcTpcSignalMap
 
     // Create the Sim channel histograms: one for each plane with all selected particles
     // and one for each plane and selected particle.
@@ -601,8 +601,8 @@ void LbTupler::analyze(const art::Event& event) {
       TH2* ph = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                   "Sim channels for " + geohelp.ropName(irop));
       sphists.push_back(ph);
-      for ( const auto& mctp : selectedMCTrackPerfsSC ) {
-        if ( mctp.hits().ropNbin(irop) == 0 ) continue;
+      for ( const auto& mctp : selectedMcTpcSignalMapsSC ) {
+        if ( mctp.ropNbin(irop) == 0 ) continue;
         mctp.fillRopChannelTickHist(ph, irop);
         unsigned int itrk = mctp.trackID();
         ostringstream sstrk;
@@ -610,7 +610,7 @@ void LbTupler::analyze(const art::Event& event) {
         string strk = sstrk.str();
         TH2* pht = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                      "Sim channels for " + geohelp.ropName(irop),
-                                     "mct"+strk, "MC particle " + strk, mctp.hits().tickRange());
+                                     "mct"+strk, "MC particle " + strk, mctp.tickRange());
         mctp.fillRopChannelTickHist(pht, irop);
         summarize2dHist(pht, myname, wnam+8, 4, 4);
       }
@@ -633,24 +633,24 @@ void LbTupler::analyze(const art::Event& event) {
   }  // end DoSimChannel
 
   // Display the performance objects.
-  if ( fDoMCTrackPerf && fdbg > 2 ) {
-    for ( unsigned int imcs=0; imcs<selectedMCTrackPerfsSC.size(); ++imcs ) {
-      const auto mctsc = selectedMCTrackPerfsSC.at(imcs);
-      const auto mctmc = selectedMCTrackPerfsMC.at(imcs);
-      cout << myname << "Dumping MCTrackPerf sim channels for event " << fevent
+  if ( fDoMcTpcSignalMap && fdbg > 2 ) {
+    for ( unsigned int imcs=0; imcs<selectedMcTpcSignalMapsSC.size(); ++imcs ) {
+      const auto mctsc = selectedMcTpcSignalMapsSC.at(imcs);
+      const auto mctmc = selectedMcTpcSignalMapsMC.at(imcs);
+      cout << myname << "Dumping McTpcSignalMap sim channels for event " << fevent
            << " track " << mctsc.trackID()
            << "\n" << myname << "  Total tick/hit signal: "
-           << mctsc.hits().tickSignal() << "/" << mctsc.hits().hitSignal() << " MeV:" << endl;
+           << mctsc.tickSignal() << "/" << mctsc.hitSignal() << " MeV:" << endl;
       mctsc.print(cout,  0, myname + "  ");
        mctsc.print(cout, 12, myname + "  ");
-      cout << myname << "Dumping MCTrackPerf MC hits for event " << fevent
+      cout << myname << "Dumping McTpcSignalMap MC hits for event " << fevent
            << " track " << mctmc.trackID()
           << "\n" << myname << "  Total tick/hit signal: "
-           << mctmc.hits().tickSignal() << "/" << mctmc.hits().hitSignal() << " MeV:" << endl;
+           << mctmc.tickSignal() << "/" << mctmc.hitSignal() << " MeV:" << endl;
       mctmc.print(cout,  0, myname + "  ");
       mctmc.print(cout, 11, myname + "  ");
     }  // End loop over selected MC tracks
-  }  // end DoMCTrackPerf
+  }  // end DoMcTpcSignalMap
 
   //************************************************************************
   // Raw digits.

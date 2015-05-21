@@ -3,7 +3,7 @@
 // David Adams
 // May 2015
 //
-// Uses MCParticles to build a Root tree and to add hits to MCTrackPerf objects.
+// Uses MCParticles to build a Root tree and to add hits to McTpcSignalMap objects.
 // Interpolates between the points on the MCParticle trajectory.
 
 #ifndef MCTracjectoryFollower_Module
@@ -20,7 +20,7 @@ class MCParticle;
 }
 class TTree;
 class GeoHelper;
-class MCTrackPerf;
+class McTpcSignalMap;
 
 class MCTrajectoryFollower {
 
@@ -45,7 +45,7 @@ public:
   // Call this to add an MCParticle to the current event.
   //   par - The input MCParticle.
   //   pmctp - If non-null, the MCparticle is used to fill this performance object.
-  int addMCParticle(const simb::MCParticle& par, MCTrackPerf* pmctp =nullptr);
+  int addMCParticle(const simb::MCParticle& par, McTpcSignalMap* pmtsm =nullptr);
 
 private:
 

@@ -87,7 +87,7 @@ physics:
       # Control flags.
       DoTruth:           true
       DoMCParticles:     true
-      DoMCTrackPerf:     true
+      DoMcTpcSignalMap:  true
       DoSimChannels:     true
       DoSimChannelTree:  true
       DoRaw:             true

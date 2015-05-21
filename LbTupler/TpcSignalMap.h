@@ -62,6 +62,9 @@ public:
   // is assigned to a ROP (APA readout plane).
   TpcSignalMap(const GeoHelper* pgh);
 
+  // Dtor.
+  virtual ~TpcSignalMap();
+
   // Add a signal (energy deposit or ADC count) in a bin.
   int addSignal(Channel chan, Tick tick, Signal signal);
 
