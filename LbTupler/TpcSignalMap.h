@@ -8,6 +8,7 @@
 #include <map>
 #include <iostream>
 #include "art/Framework/Core/FindManyP.h"
+#include "Range.h"
 
 namespace sim {
 class SimChannel;
@@ -24,6 +25,7 @@ public:
 
   typedef unsigned int Channel;
   typedef int Tick;
+  typedef Range<Tick> TickRange;
   typedef unsigned int Index;
   typedef double Signal;
   typedef std::vector<art::Ptr<recob::Hit>> AssociatedHits;
@@ -31,7 +33,7 @@ public:
 public:
 
   struct Hit {
-    Tick tick1;
+    TickRange ticks;
     Tick tick2;
     Signal signal;
     Hit();
@@ -86,6 +88,7 @@ public:
   Channel channelMax() const;
   Tick tickMin() const;
   Tick tickMax() const;
+  TickRange tickRange() const;
 
   // The number of included channels.
   unsigned int channelCount() const;
@@ -130,8 +133,7 @@ private:
   const GeoHelper* m_pgh;    // Geometry helper maps channels to ROPs.
   TickChannelMap m_ticksig;  // m_ticksig[chan][tick] is the signal for (chan, tick)
   HitChannelMap m_hitsig;    // m_hitsig[chan][hit] is the hit for (chan, hit number)
-  Tick m_tickMin;
-  Tick m_tickMax;
+  TickRange m_tickRange;
   IndexVector m_ropnbin;
 
 };

@@ -95,8 +95,8 @@ int MCTrackPerf::fillRopChannelTickHist(TH2* ph, Index irop) const {
 
 ostream& MCTrackPerf::print(ostream& out, int detail, string prefix) const {
   ostringstream sout;
-  sout << prefix << "MCParticle " << trackID()
-        << ", PDG=" << pdg() << ", RPDG=" << rpdg() << ", ";
+  sout << prefix << "MCParticle " << setw(3) << trackID()
+        << ", PDG=" << setw(6) << pdg() << ", RPDG=" << setw(4) << rpdg() << ", ";
   return m_hits.print(out, detail, sout.str(), prefix);
 }
 

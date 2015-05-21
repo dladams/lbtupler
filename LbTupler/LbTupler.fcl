@@ -85,14 +85,15 @@ physics:
     {
 
       # Control flags.
-      DoTruth:        true
-      DoMCParticles:  true
-      DoMCTrackPerf:  true
-      DoSimChannels:  true
-      DoRaw:          true
-      DoWires:        true 
-      DoHits:         false
-      DoClusters:     true
+      DoTruth:           true
+      DoMCParticles:     true
+      DoMCTrackPerf:     true
+      DoSimChannels:     true
+      DoSimChannelTree:  true
+      DoRaw:             true
+      DoWires:           true 
+      DoHits:            false
+      DoClusters:        true
 
       # The "module_type" tells us which module to run. The name here
       # matches the name supplied to DEFINE_ART_MODULE near the end of

@@ -64,6 +64,7 @@
 #include "GeoHelper.h"
 #include "ChannelTickHistCreator.h"
 #include "MCTrajectoryFollower.h"
+#include "SimChannelTupler.h"
 
 using std::cout;
 using std::endl;
@@ -130,7 +131,8 @@ private:
   bool fDoTruth;                   // Read truth container.
   bool fDoMCParticles;             // Create MC particle tree and histograms.
   bool fDoMCTrackPerf;             // Evalueate MC track performance.
-  bool fDoSimChannels;             // Create the SimChannel tree and histograms.
+  bool fDoSimChannels;             // Create the SimChannel performance objects and histograms.
+  bool fDoSimChannelTree;          // Create the SimChannel tree.
   bool fDoRaw;                     // Create the RawDigits tree and histograms.
   bool fDoWires;                   // Create the Wire histograms.
   bool fDoHits;                    // Create the Hit histograms.
@@ -154,7 +156,7 @@ private:
   MCTrajectoryFollower* m_pmctraj;
 
   // The n-tuples we'll create.
-  TTree* fSimChannelNtuple;
+  SimChannelTupler* m_sctupler;
   TTree* fReconstructionNtuple;
 
   // The variables that will go into the n-tuple.
@@ -174,26 +176,12 @@ private:
   double fdemaxmcp;  // Max energy deposit for histogram ranges for McParticle
   double fdemax;     // Max energy deposit for histogram ranges
 
-  // The maximum size of fdedxBins; in other words, it's the
-  // capacity of the vector. If we ever perform an operation that
-  // causes it to exceed this limit, it would mean fdedxBins would
-  // shift in memory, the n-tuple branch would point to the wrong
-  // location in memory, and everything would go wonky.
-  unsigned int fMaxCapacity;
-
-  // Sim channel info.
+  // Maximum # of sim channels (for tree).
   unsigned int fscCapacity;
-  unsigned int fscCount;
+
+  // Tick range for histograms.
   unsigned int ftdcTickMin;         // First TDC bin to draw.
   unsigned int ftdcTickMax;         // Last+1 TDC bin to draw.
-  vector<unsigned int> fscChannel;  // Readout channel number
-  vector<float> fscEnergy;          // Energy summed over all TDCs
-  vector<float> fscCharge;          // Charge summed over all TDCs
-  vector<int> fscTdcPeak;           // TDC sample with largest energy for the channel.
-  vector<float> fscTdcMean;         // Energy-weighted mean of the TDC samples for the channel.
-  vector<float> fscTdcEnergy;       // Energy of TDC sample with largest energy
-  vector<float> fscTdcCharge;       // Charge of TDC sample with largest energy
-  vector<unsigned int> fscTdcNide;  // # energy deposits contributing to the TDC.
 
   // Geometry service.
   GeoHelper* fgeohelp;
@@ -213,7 +201,8 @@ private:
 
 // Constructor
 LbTupler::LbTupler(fhicl::ParameterSet const& parameterSet)
-: EDAnalyzer(parameterSet), fdbg(0), m_pmctraj(nullptr), fgeohelp(nullptr) {
+: EDAnalyzer(parameterSet), fdbg(0),
+  m_pmctraj(nullptr), m_sctupler(nullptr), fgeohelp(nullptr) {
   // Read in the parameters from the .fcl file.
   this->reconfigure(parameterSet);
 }
@@ -262,12 +251,13 @@ void LbTupler::beginJob() {
   double detLength = fGeometry->DetLength(); 
   double detWidth  = fGeometry->DetHalfWidth()  * 2.;
   double detHeight = fGeometry->DetHalfHeight() * 2.;
+  double detVolume = sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
   if ( fdbg > 0 ) {
     cout << myname << "Detector length: " << detLength << " cm" << endl;
     cout << myname << "Detector width:  " << detWidth  << " cm" << endl;
     cout << myname << "Detector height: " << detHeight << " cm" << endl;
+    cout << myname << "Detector volume: " << detVolume << " cm^3" << endl;
   }
-  double detSize = sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
 
   // Geometry dump from Michelle.
   if ( fdbg > 4 ) {
@@ -294,27 +284,6 @@ void LbTupler::beginJob() {
     }
   }
 
-  // Set up the vector that will be used to accumulate the dE/dx
-  // values into bins. We want the capacity of this vector to be big
-  // enough to hold the bins of the longest possible track.  The
-  // following code will work if the detector has just one TPC and
-  // all tracks are contained within it; if there's a possibility
-  // that a single track could go through or outside multiple TPCs
-  // then you'll have to think some more.
-  // The reason we're doing this is that it's important that the
-  // memory location of fdEdxBins.data() not change throughout the
-  // execution of the program; see the TTree::Branch() calls below.
-  fMaxCapacity = 1;
-  if ( fBinSize > 0.0 ) fMaxCapacity = (unsigned int)(detSize/fBinSize ) + 1;
-  fscChannel.reserve(fscCapacity);
-  fscEnergy.reserve(fscCapacity);
-  fscCharge.reserve(fscCapacity);
-  fscTdcPeak.reserve(fscCapacity);
-  fscTdcMean.reserve(fscCapacity);
-  fscTdcEnergy.reserve(fscCapacity);
-  fscTdcCharge.reserve(fscCapacity);
-  fscTdcNide.reserve(fscCapacity);
-
   // Define the histograms. Putting semi-colons around the title
   // causes it to be displayed as the x-axis label if the histogram
   // is drawn.
@@ -338,19 +307,9 @@ void LbTupler::beginJob() {
   fReconstructionNtuple->Branch("PDG",     &fpdg,            "PDG/I");
 
   // Sim channel tree.
-  fSimChannelNtuple = tfs->make<TTree>("LbTuplerSimChannel","LbTuplerSimChannel");
-  fSimChannelNtuple->Branch("event",     &fevent,          "event/I");
-  fSimChannelNtuple->Branch("subrun",    &fSubRun,         "subrun/I");
-  fSimChannelNtuple->Branch("run",       &fRun,            "run/I");
-  fSimChannelNtuple->Branch("nchan",     &fscCount, "nchan/i");
-  fSimChannelNtuple->Branch("chan",      fscChannel.data(), "channnel[nchan]/i");
-  fSimChannelNtuple->Branch("energy",    fscEnergy.data(), "energy[nchan]/F");
-  fSimChannelNtuple->Branch("charge",    fscCharge.data(), "charge[nchan]/F");
-  fSimChannelNtuple->Branch("tdcpeak",   fscTdcPeak.data(), "tdcpeak[nchan]/I");
-  fSimChannelNtuple->Branch("tdcmean",   fscTdcMean.data(), "tdcmean[nchan]/F");
-  fSimChannelNtuple->Branch("tdcenergy", fscTdcEnergy.data(), "tdcenergy[nchan]/F");
-  fSimChannelNtuple->Branch("tdccharge", fscTdcCharge.data(), "tdccharge[nchan]/F");
-  fSimChannelNtuple->Branch("tdcnide",   fscTdcNide.data(),   "tdcnide[nchan]/i");
+  if ( fDoSimChannels && fDoSimChannelTree ) {
+    m_sctupler = new SimChannelTupler(*fgeohelp, *tfs, fscCapacity);
+  }
 }
  
 //************************************************************************
@@ -373,6 +332,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoMCParticles           = p.get<bool>("DoMCParticles");
   fDoMCTrackPerf           = p.get<bool>("DoMCTrackPerf");
   fDoSimChannels           = p.get<bool>("DoSimChannels");
+  fDoSimChannelTree        = p.get<bool>("DoSimChannelTree");
   fDoRaw                   = p.get<bool>("DoRaw");
   fDoWires                 = p.get<bool>("DoWires");
   fDoHits                  = p.get<bool>("DoHits");
@@ -405,6 +365,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "DoMCParticles" << sep << fDoMCParticles << endl;
     cout << prefix << setw(wlab) << "DoMCTrackPerf" << sep << fDoMCTrackPerf << endl;
     cout << prefix << setw(wlab) << "DoSimChannels" << sep << fDoSimChannels << endl;
+    cout << prefix << setw(wlab) << "DoSimChannelTree" << sep << fDoSimChannelTree << endl;
     cout << prefix << setw(wlab) << "DoRaw" << sep << fDoRaw << endl;
     cout << prefix << setw(wlab) << "DoWires" << sep << fDoWires << endl;
     cout << prefix << setw(wlab) << "DoHits" << sep << fDoHits << endl;
@@ -443,7 +404,7 @@ void LbTupler::analyze(const art::Event& event) {
   const string myname = "LbTupler::analyze: ";
 
   // Access ART's TFileService, which will handle creating and writing
-  // histograms and n-tuples for us. 
+  // histograms and trees.
   art::ServiceHandle<art::TFileService> tfs;
   art::TFileService* ptfs = &*tfs;
 
@@ -452,7 +413,7 @@ void LbTupler::analyze(const art::Event& event) {
   fRun    = event.run();
   fSubRun = event.subRun();
   if ( fdbg > 0 ) cout << myname << "Processing run " << fRun << "-" << fSubRun
-       << ", event " << fevent << endl;
+                       << ", event " << fevent << endl;
 
   // Create string representation of the event number.
   ostringstream ssevt;
@@ -461,23 +422,25 @@ void LbTupler::analyze(const art::Event& event) {
   string sevtf = sevt;
   while ( sevtf.size() < 4 ) sevtf = "0" + sevtf;
 
-  // Channel-tick histogram creators.
+  // Channel-tick histogram for the simulation data products.
+  ChannelTickHistCreator hcreateSim(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 1.0, 20);
+  ChannelTickHistCreator hcreateSimPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 5.0, 20);
+
+  // Channel-tick histogram creators for the reconstructed data products.
   string ztitle = "ADC counts";
   double zmax = 150;
   int ncontour = 30;
-  ChannelTickHistCreator hcreateReco(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, zmax, ncontour);
-  ChannelTickHistCreator hcreateRecoNeg(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, -zmax, zmax, ncontour);
-  ChannelTickHistCreator hcreateRecoPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, 5*zmax, ncontour);
   if ( fhistusede ) {
     ztitle = "Energy [MeV]";
     zmax = fdemax;
     ncontour = 40;
   }
-  ChannelTickHistCreator hcreateSim(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 1.0, 20);
-  ChannelTickHistCreator hcreateSimPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 5.0, 20);
+  ChannelTickHistCreator hcreateReco(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, zmax, ncontour);
+  ChannelTickHistCreator hcreateRecoNeg(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, -zmax, zmax, ncontour);
+  ChannelTickHistCreator hcreateRecoPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, 5*zmax, ncontour);
 
   // Formatting.
-  int wnam = 12 + sevtf.size();
+  int wnam = 12 + sevtf.size();                  // Base width for a histogram name.
 
   // Check gemetry helper.
   if ( fgeohelp == nullptr ) {
@@ -531,6 +494,7 @@ void LbTupler::analyze(const art::Event& event) {
         if ( fdbg > 1 ) cout << myname << "  Selecting";
         // Add selected track to the MCParticle performance list.
         selectedMCTrackPerfsMC.emplace(selectedMCTrackPerfsMC.end(), *&particle, fgeohelp);
+        // Fill the MC performance information including signal map.
         MCTrackPerf& mctp = selectedMCTrackPerfsMC.back();
         m_pmctraj->addMCParticle(particle, &mctp);
         mctp.buildHits();
@@ -579,7 +543,7 @@ void LbTupler::analyze(const art::Event& event) {
         if ( mctrackperf.hits().ropNbin(irop) == 0 ) continue;
         TH2* ph = hcreateSimPeak.create("mcp" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                         "MC particle signals for " + geohelp.ropName(irop),
-                                        "mct" + smcp, "particle " + smcp);
+                                        "mct" + smcp, "particle " + smcp, mctrackperf.hits().tickRange());
         mctrackperf.fillRopChannelTickHist(ph, irop);
         if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
       }  // End loop over ROPs
@@ -645,101 +609,12 @@ void LbTupler::analyze(const art::Event& event) {
         sstrk << itrk;
         string strk = sstrk.str();
         TH2* pht = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                    "Sim channels for " + geohelp.ropName(irop),
-                                    "mct"+strk, "MC particle " + strk);
+                                     "Sim channels for " + geohelp.ropName(irop),
+                                     "mct"+strk, "MC particle " + strk, mctp.hits().tickRange());
         mctp.fillRopChannelTickHist(pht, irop);
         summarize2dHist(pht, myname, wnam+8, 4, 4);
       }
     }
-
-    // Loop over the SimChannel objects in the event.
-    if ( fdbg > 0 ) cout << myname << "Looping over sim channels (size = " << simChannelHandle->size() << ")" << endl;
-    fscCount = 0;
-    for ( auto& val : fscChannel ) val = 0;
-    for ( auto& val : fscCharge ) val = 0.0;
-    for ( auto& val : fscEnergy ) val = 0.0;
-    for ( auto const& simchan : (*simChannelHandle) ) {
-      auto ichan = simchan.Channel();
-      unsigned int irop = geohelp.channelRop(ichan);
-      if ( irop == geohelp.nrop() ) {
-        cout << myname << "ERROR: SimChannel channel " << ichan << " is not in a readout plane." << endl;
-        abort();
-      }
-      int iropchan = ichan - int(geohelp.ropFirstChannel(irop));
-      if ( iropchan < 0 || iropchan >= int(geohelp.ropNChannel(irop)) ) {
-        cout << myname << "ERROR: ROP channel " << iropchan << " is out of range [0, "
-             << geohelp.ropNChannel(irop) << ")" << endl;
-        abort();
-      }
-      // Fetch the histogram for the current ROP.
-      //dla TH2* psphist = sphists[irop];
-      if ( fdbg > 3 ) cout << myname << "SimChannel " << setw(4) << fscCount
-                          << ": ROP " << setw(2) << irop
-                          << ", Global/ROP channel " << setw(4) << ichan
-                          << "/" << setw(3) << iropchan;
-      if ( fscCount < fscCapacity ) {
-        fscChannel[fscCount] = ichan;
-        auto const& idemap = simchan.TDCIDEMap();
-        double energy = 0.0;  // Total energy in the channel
-        double charge = 0.0;  // Total charge in the channel
-        double energytdc = 0.0;  // Total energy*tdc in the channel
-        // Loop over TDC samples.
-        short tdcPeak = 0;     // TDC sample with the largest energy for this channel
-        double tdcEnergyMax = 0.0;  // Energy for that TDC
-        double tdcChargeMax = 0.0;  // Charge for that TDC
-        unsigned int tdcNideMax = 0.0;  // Charge for that TDC
-        for ( auto const& ideent : idemap ) {
-          short tdc = ideent.first;
-          auto idevec = ideent.second;
-          double tdcEnergy = 0.0;
-          double tdcCharge = 0.0;
-          unsigned int tdcNide = idevec.size();
-          // Sum over the tracks contributing to this channel sample.
-          for ( auto& ide : idevec ) {
-            tdcEnergy += ide.energy;
-            tdcCharge += ide.numElectrons;
-          }
-          // Update the peak channel data.
-          if ( tdcPeak == 0 || tdcEnergy > tdcEnergyMax ) {
-            tdcPeak = tdc;
-            tdcEnergyMax = tdcEnergy;
-            tdcChargeMax = tdcCharge;
-            tdcNideMax = tdcNide;
-          }
-          // Increment the sums for this channel.
-          //energy += tdcEnergy;
-          //charge += tdcCharge;
-          //energytdc += tdcEnergy*tdc;
-          // Fill the histogram.
-          //dla psphist->Fill(tdc, iropchan, tdcEnergy);
-          //if ( fdbg > 4 ) cout << "\n" << myname << "    " << psphist->GetName()
-          //                    << ": Global/ROP channel " << setw(4) << ichan
-          //                    << "/" << setw(3) << iropchan
-          //                    << ", tdc " << tdc
-          //                    << " has " << int(100.0*tdcEnergy+0.4999)/100.0 << " MeV";
-        }
-        if ( fdbg > 3 ) {
-          if ( fdbg > 4 ) cout << "\n" << myname << "    Total ";
-          else cout << ": ";
-          double ren = 0.01*int(100.0*energy+0.49999);
-          double rchg = int(charge+0.499999);
-          cout << "E=" << ren << " MeV; Q=" << rchg << endl;
-        }
-        fscEnergy[fscCount] = energy;
-        fscCharge[fscCount] = charge;
-        fscTdcPeak[fscCount] = tdcPeak;
-        fscTdcMean[fscCount] = energytdc/energy;
-        fscTdcEnergy[fscCount] = tdcEnergyMax;
-        fscTdcCharge[fscCount] = tdcChargeMax;
-        fscTdcNide[fscCount] = tdcNideMax;
-        ++fscCount;
-      } else {
-        cout << myname << "WARNING: Skipping sim channel " << ichan << endl;
-      }
-    } // end loop over sim channels in the event. 
-
-    // Fill SimChannel tree.
-    fSimChannelNtuple->Fill();
 
     // Display the contents of each SimChannel histogram.
     if ( fdbg > 1 ) {
@@ -747,6 +622,12 @@ void LbTupler::analyze(const art::Event& event) {
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
         summarize2dHist(sphists[irop], myname, wnam, 4, 4);
       }
+    }
+
+    // Fill tree.
+    if ( fDoSimChannelTree ) {
+      m_sctupler->fill(event, *simChannelHandle);
+      if ( fdbg > 1 ) cout << myname << "Filling SimChannel tree." << endl;
     }
 
   }  // end DoSimChannel
@@ -1010,61 +891,12 @@ void LbTupler::analyze(const art::Event& event) {
         }
         TH2* ph = hcreateReco.create("clu" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                      "Cluster hits for " + geohelp.ropName(irop),
-                                     "clu" + sclu, "cluster " + sclu);
+                                     "clu" + sclu, "cluster " + sclu, ch.tickRange());
         ch.fillRopChannelTickHist(ph,irop);
         if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
       }
     }
 
-/*
-    int wclus = 3;
-    int wtpc = 1;
-    int wapa = 1;
-    int wchan = 4;
-    int whit = 3;
-    int wtick = 5;
-    int wadc = 4;
-    int wsadc = 6;
-    int wwid = 18;
-    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-      art::Ptr<recob::Cluster> pclu = clusters[iclu];
-      std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
-      if ( fdbg > 2 ) {
-        int cltpc = pclu->Plane().TPC;
-        int clapa = geohelp.tpcApa(cltpc);
-        float cladc = pclu->SummedADC();
-        float clchg = pclu->Integral();
-        cout << myname << "  Cluster " << setw(wclus) << iclu
-             << " TPC: " << setw(wtpc) << cltpc
-             << " APA: " << setw(wapa) << clapa
-             << " hit count: " << setw(whit) << hits.size()
-             << ", ADC=" << setw(wsadc) << int(cladc)
-             << ", Q=" << clchg
-             << endl;
-        }
-      // Loop over hits on the cluster.
-      for ( auto& phit : hits ) {
-        if ( phit.isNull() ) {
-          cout << myname << "ERROR: Cluster hit is mising." << endl;
-          abort();
-        }
-        WireID wid = phit->WireID();
-        ostringstream sswid;
-        sswid << wid;
-        unsigned int chan = phit->Channel();
-        int lid = phit->LocalIndex();
-        unsigned int tick1 = phit->StartTick();
-        unsigned int tick2 = phit->EndTick();
-        if ( fdbg > 3 ) cout << myname << "    "
-                            << setw(wchan) << chan << "-" << lid
-                            << " " << setw(wwid) << sswid.str() << " I:" << lid
-                            << "  (" << setw(wtick) << tick1 << ", " << setw(wtick) << tick2 << ")"
-                            << ", ADC=" << setw(wadc) << int(phit->SummedADC())
-                            << endl;
-      }  // end loop over cluster hits
-      ++iclu;
-    }  // end loop over event clusters
-*/
   }  // end DoClusters
 
   //************************************************************************

@@ -16,10 +16,11 @@ using std::ostream;
 using simb::MCParticle;
 using sim::SimChannel;
 
-typedef TpcSignalMap::Tick    Tick;
-typedef TpcSignalMap::Channel Channel;
-typedef TpcSignalMap::Signal  Signal;
-typedef TpcSignalMap::Index   Index;
+typedef TpcSignalMap::Tick      Tick;
+typedef TpcSignalMap::TickRange TickRange;
+typedef TpcSignalMap::Channel   Channel;
+typedef TpcSignalMap::Signal    Signal;
+typedef TpcSignalMap::Index     Index;
 
 //**********************************************************************
 // Local definitions.
@@ -34,12 +35,12 @@ int dbg() { return 0; }
 //**********************************************************************
 
 TpcSignalMap::Hit::Hit()
-: tick1(badTick()), tick2(badTick()), signal(0.0) { }
+: ticks(0, -1) { }
 
 //**********************************************************************
 
 TpcSignalMap::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
-: tick1(atick1), tick2(atick2), signal(asignal) { }
+: ticks(atick1, atick2), signal(asignal) { }
 
 //**********************************************************************
 // Main class.
@@ -59,15 +60,13 @@ Tick TpcSignalMap::badTick() {
 
 TpcSignalMap::TpcSignalMap()
 : m_pgh(nullptr),
-  m_tickMin(badTick()),
-  m_tickMax(badTick()) { }
+  m_tickRange(badTick(), badTick()) { }
 
 //**********************************************************************
 
 TpcSignalMap::TpcSignalMap(const GeoHelper* pgh)
 : m_pgh(pgh),
-  m_tickMin(badTick()),
-  m_tickMax(badTick()) {
+  m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()) {
   if ( m_pgh != nullptr ) {
     m_ropnbin.resize(m_pgh->nrop(), 0);
   }
@@ -95,6 +94,10 @@ int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal) {
   } else {
     ticksig[tick] += signal;
   }
+  Tick& tick1 = m_tickRange.first();
+  Tick& tick2 = m_tickRange.last();
+  if ( tick < tick1 ) tick1 = tick;
+  if ( tick > tick2 ) tick2 = tick;
   return 0;
 }
 
@@ -184,8 +187,6 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
         //Signal sig = ide.numElectrons;
         Signal sig = ide.energy;
         if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
-        if ( m_tickMin == badTick() || tick < m_tickMin ) m_tickMin = tick;
-        if ( m_tickMax == badTick() || tick > m_tickMax ) m_tickMax = tick;
         addSignal(chan, tick, sig);
       } else {
         if ( dbg() > 1 ) std::cout << myname << "  Skipping track " << ide.trackID << endl;
@@ -270,13 +271,19 @@ Channel TpcSignalMap::channelMax() const {
 //**********************************************************************
 
 Tick TpcSignalMap::tickMin() const {
-  return m_tickMin;
+  return m_tickRange.first();
 }
 
 //**********************************************************************
 
 Tick TpcSignalMap::tickMax() const {
-  return m_tickMax;
+  return m_tickRange.last();
+}
+
+//**********************************************************************
+
+TickRange TpcSignalMap::tickRange() const {
+  return m_tickRange;
 }
 
 //**********************************************************************
@@ -379,8 +386,8 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   int detail1 = fulldetail - detail2*10;
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
-    out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels with "
-        << hitCount() << " hits and " << tickCount() << " ticks." << endl;
+    out << hdrprefix << "TpcSignalMap map has " << setw(3) << channelCount() << " channels with "
+        << setw(4) << hitCount() << " hits and " << setw(4) << tickCount() << " ticks." << endl;
   } else if ( detail1 == 1 ) {
     out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels:" << endl;
     Tick badtick = badTick();
@@ -429,8 +436,8 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
       Channel chan = echan.first;
       // Loop over hits in the channel.
       for ( const auto& ehit : echan.second ) {
-        out << prefix << "  " << setw(5) << chan << ": " << ehit.tick1;
-        if ( ehit.tick2 > ehit.tick1 ) out << ":" << ehit.tick2;
+        out << prefix << "  " << setw(5) << chan << ": " << ehit.ticks.first();
+        if ( ehit.ticks.last() > ehit.ticks.first() ) out << ":" << ehit.ticks.last();
         out << ", ADC = " << ehit.signal << " MeV" << endl;
       }  // End loop over hits.
     }  // End loop over channels.

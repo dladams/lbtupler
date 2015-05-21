@@ -43,6 +43,8 @@ public:
   int endEvent();
 
   // Call this to add an MCParticle to the current event.
+  //   par - The input MCParticle.
+  //   pmctp - If non-null, the MCparticle is used to fill this performance object.
   int addMCParticle(const simb::MCParticle& par, MCTrackPerf* pmctp =nullptr);
 
 private:

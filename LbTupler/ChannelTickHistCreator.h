@@ -9,6 +9,7 @@
 // Class to create channel vs. tick histograms.
 
 #include <string>
+#include "Range.h"
 
 class TH2;
 namespace art {
@@ -16,6 +17,11 @@ class TFileService;
 }
 
 class ChannelTickHistCreator {
+
+public:  // typedefs
+
+  typedef int Tick;
+  typedef Range<Tick> TickRange;
 
 public:  // methods
 
@@ -35,15 +41,16 @@ public:  // methods
   //   stitle Unique prefix for histogram title, e.g. "Hits for APA plane 2u"
   //   sevtNameSuffix = field appended to event ID in histogram name, e.g. "trk123"
   //   sevtTitleSuffix = field appended to event ID in histogram title, e.g. "track 123"
+  //   tickRange - used to devine range of x-axis iff range has at least one tick
   TH2* create(std::string slab, unsigned int chan1, unsigned int chan2, std::string stitle,
-              std::string sevtNameSuffix ="", std::string sevtTitleSuffix ="");
+              std::string sevtNameSuffix ="", std::string sevtTitleSuffix ="",
+              TickRange tickRange =TickRange(0,-1));
 
 private:  // data
 
   art::TFileService* m_ptfs;
   std::string m_sevt;
-  int m_tick1;
-  int m_tick2;
+  TickRange m_tickRange;
   std::string m_zlab;
   double m_zmin;
   double m_zmax;
