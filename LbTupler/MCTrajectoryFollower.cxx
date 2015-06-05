@@ -22,7 +22,7 @@
 #include "intProcess.h"
 #include "reducedPDG.h"
 #include "GeoHelper.h"
-#include "McTpcSignalMap.h"
+#include "TpcSignalMap.h"
 
 using std::cout;
 using std::endl;
@@ -171,17 +171,7 @@ int MCTrajectoryFollower::beginEvent(const art::Event& event, const MCParticleVe
 
 //************************************************************************
 
-int MCTrajectoryFollower::endEvent() {
-  const string myname = "MCTrajectory::endEvent: ";
-  if ( m_filltree ) {
-    m_ptree->Fill();
-  }
-  return 0;
-}
-
-//************************************************************************
-
-int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, McTpcSignalMap* pmtsm) {
+int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm) {
   const string myname = "MCTrajectory::addMCParticle: ";
   if ( m_geohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
@@ -430,7 +420,10 @@ int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, McTpcSignalM
     indet0 = indet;
     tpcid0 = tpcid;
     icry0 = icry;
+
   }  // End loop over trajectory points.
+
+  if ( m_filltree ) m_ptree->Fill();
 
   return 0;
 

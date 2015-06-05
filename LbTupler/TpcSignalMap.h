@@ -1,15 +1,25 @@
 // TpcSignalMap.h
 
-// Map of hits associated with channels. A hit is defined as a contiguous
-// set of ticks.
+#ifndef TpcSignalMap_H
+#define TpcSignalMap_H
+
+// David Adams
+// June 2015
+//
+// Objects of this class hold a map of float signals indexed by TPC channel
+// and TDC tick. They also hold hits indexed by channel.
 
 #include <string>
 #include <vector>
 #include <map>
 #include <iostream>
+#include <memory>
 #include "art/Framework/Core/FindManyP.h"
-#include "Range.h"
+#include "TpcTypes.h"
 
+namespace simb {
+class MCParticle;
+}
 namespace sim {
 class SimChannel;
 }
@@ -23,14 +33,25 @@ class TpcSignalMap {
 
 public:
 
-  typedef unsigned int Channel;
-  typedef int Tick;
-  typedef Range<Tick> TickRange;
-  typedef unsigned int Index;
+  typedef std::string Name;
+  typedef tpc::Index Index;
+  typedef tpc::Channel Channel;
+  typedef tpc::Tick Tick;
+  typedef tpc::TickRange TickRange;
   typedef double Signal;
   typedef std::vector<art::Ptr<recob::Hit>> AssociatedHits;
+  typedef std::shared_ptr<TpcSignalMap> TpcSignalMapPtr;
+  typedef std::vector<TpcSignalMapPtr> TpcSignalMapVector;
 
 public:
+
+  struct McInfo {
+    const simb::MCParticle* ppar;
+    int trackID;
+    int pdg;
+    int rpdg;
+    McInfo(const simb::MCParticle& par);
+  };
 
   struct Hit {
     TickRange ticks;
@@ -42,12 +63,7 @@ public:
 
 public:
 
-  // Value used for an invalid or undefined channel or tick.
-  static Channel badChannel();
-  static Tick badTick();
-
-public:
-
+  typedef std::shared_ptr<McInfo> McInfoPtr;
   typedef std::map<Tick, double> SignalTickMap;
   typedef std::map<Channel, SignalTickMap> TickChannelMap;
   typedef std::vector<Hit> HitVector;
@@ -57,11 +73,15 @@ public:
   // Default ctor.
   TpcSignalMap();
 
-  // Ctor from a geometry helper.
+  // Ctor from name and geometry helper.
   // If this is used, then each channel (and thus each signal and hit)
   // is assigned to a ROP (APA readout plane).
-  TpcSignalMap(const GeoHelper* pgh);
+  TpcSignalMap(Name name, const GeoHelper* pgh);
 
+  // Ctor adding an MC particle.
+  TpcSignalMap(std::string name, const simb::MCParticle& par, const GeoHelper* pgh =nullptr);
+
+  // Copy keeping only the signals for a given range of channels.
   // Dtor.
   virtual ~TpcSignalMap();
 
@@ -70,6 +90,9 @@ public:
 
   // Add contributions from a SimChannel for track tid.
   int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
+
+  // Add contributions from a SimChannel taking track ID from the MC info..
+  int addSimChannel(const sim::SimChannel& sch);
 
   // Add a recob::Hit and its signals.
   int addHit(const recob::Hit& hit, int verbose =0);
@@ -82,6 +105,7 @@ public:
   int buildHits();
 
   // Getters.
+  std::string name() const { return m_name; }
   const GeoHelper* geometryHelper() const { return m_pgh; }
   const TickChannelMap& tickSignalMap() const;
   const HitChannelMap& hitSignalMap() const;
@@ -112,6 +136,21 @@ public:
   // Read the number of filled channel-tick bins for a ROP.
   Index ropNbin(Index irop) const;
 
+  // Return if there is MC info associated with this object.
+  bool haveMcinfo() const;
+
+  // Return the MC info associated with this object. Null for none.
+  const McInfo* mcinfo() const;
+
+  // Set the ROP for this set of signals.
+  void setRop(Index rop);
+
+  // Return if this set of signals is assigned to a ROP.
+  bool haveRop() const;
+
+  // Return the ROP to which this set of signals is assigned.
+  Index rop() const;
+
   // Output stream.
   //   out - stream to insert output
   //   detail -  0 = single line
@@ -128,17 +167,23 @@ public:
   // Fill a Channel vs. tick histogram for a given ROP.
   int fillRopChannelTickHist(TH2* ph, Index irop) const;
 
-  // Return the distance to a cluster.
-  //double clusterDistance(const recob::Cluster& clu) const;
+  // Split this object along ROP boundaries, i.e. one object for each ROP
+  // with signals. The new object are appended to tsms.
+  int splitByRop(TpcSignalMapVector& tsms) const;
 
 private:
 
+  std::string m_name;        // Name.
   const GeoHelper* m_pgh;    // Geometry helper maps channels to ROPs.
   TickChannelMap m_ticksig;  // m_ticksig[chan][tick] is the signal for (chan, tick)
   HitChannelMap m_hitsig;    // m_hitsig[chan][hit] is the hit for (chan, hit number)
-  TickRange m_tickRange;
-  IndexVector m_ropnbin;
+  TickRange m_tickRange;     // Range of ticks covered by this signal map.
+  IndexVector m_ropnbin;     // Number of filled channel-tick bins for each ROP
+  McInfoPtr m_pmci;          // Manging pointer to MC info.
+  Index m_rop;               // ROP for this object (badIndex() if not defined)
 
 };
 
 std::ostream& operator<<(const TpcSignalMap& rhs, std::ostream& out);
+
+#endif

@@ -3,7 +3,7 @@
 // David Adams
 // May 2015
 //
-// Uses MCParticles to build a Root tree and to add hits to McTpcSignalMap objects.
+// Uses MCParticles to build a Root tree and to add hits to TpcSignalMap objects.
 // Interpolates between the points on the MCParticle trajectory.
 
 #ifndef MCTracjectoryFollower_Module
@@ -20,7 +20,7 @@ class MCParticle;
 }
 class TTree;
 class GeoHelper;
-class McTpcSignalMap;
+class TpcSignalMap;
 
 class MCTrajectoryFollower {
 
@@ -39,13 +39,10 @@ public:
   // This method is called at the start of each event.
   int beginEvent(const art::Event& event, const MCParticleVector& pars =MCParticleVector());
 
-  // This method is called at the end of each event.
-  int endEvent();
-
   // Call this to add an MCParticle to the current event.
   //   par - The input MCParticle.
   //   pmctp - If non-null, the MCparticle is used to fill this performance object.
-  int addMCParticle(const simb::MCParticle& par, McTpcSignalMap* pmtsm =nullptr);
+  int addMCParticle(const simb::MCParticle& par, TpcSignalMap* pmtsm =nullptr);
 
 private:
 

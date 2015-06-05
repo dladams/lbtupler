@@ -7,6 +7,7 @@
 #include "Simulation/SimChannel.h"
 #include "RecoBase/Hit.h"
 #include "GeoHelper.h"
+#include "reducedPDG.h"
 
 using std::string;
 using std::cout;
@@ -15,6 +16,9 @@ using std::setw;
 using std::ostream;
 using simb::MCParticle;
 using sim::SimChannel;
+using tpc::badIndex;
+using tpc::badChannel;
+using tpc::badTick;
 
 typedef TpcSignalMap::Tick      Tick;
 typedef TpcSignalMap::TickRange TickRange;
@@ -31,7 +35,15 @@ int dbg() { return 0; }
 }
 
 //**********************************************************************
-// Sub class.
+// Sub class methods.
+//**********************************************************************
+
+TpcSignalMap::McInfo::McInfo(const simb::MCParticle& par)
+: ppar(&par),
+  trackID(par.TrackId()),
+  pdg(par.PdgCode()),
+  rpdg(reducedPDG(pdg)) { }
+
 //**********************************************************************
 
 TpcSignalMap::Hit::Hit()
@@ -46,27 +58,31 @@ TpcSignalMap::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
 // Main class.
 //**********************************************************************
 
-Channel TpcSignalMap::badChannel() {
-  return std::numeric_limits<Channel>::max();
-}
-
-//**********************************************************************
-
-Tick TpcSignalMap::badTick() {
-  return std::numeric_limits<Tick>::min();
-}
-
-//**********************************************************************
-
 TpcSignalMap::TpcSignalMap()
 : m_pgh(nullptr),
-  m_tickRange(badTick(), badTick()) { }
+  m_tickRange(badTick(), badTick()),
+  m_rop(badIndex()) { }
 
 //**********************************************************************
 
-TpcSignalMap::TpcSignalMap(const GeoHelper* pgh)
-: m_pgh(pgh),
-  m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()) {
+TpcSignalMap::TpcSignalMap(string name, const GeoHelper* pgh)
+: m_name(name),
+  m_pgh(pgh),
+  m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
+  m_rop(badIndex()) {
+  if ( m_pgh != nullptr ) {
+    m_ropnbin.resize(m_pgh->nrop(), 0);
+  }
+}
+
+//**********************************************************************
+
+TpcSignalMap::TpcSignalMap(string name, const simb::MCParticle& par, const GeoHelper* pgh)
+: m_name(name),
+  m_pgh(pgh),
+  m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
+  m_pmci(new McInfo(par)),
+  m_rop(badIndex()) {
   if ( m_pgh != nullptr ) {
     m_ropnbin.resize(m_pgh->nrop(), 0);
   }
@@ -103,6 +119,39 @@ int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal) {
   if ( tick < tick1 ) tick1 = tick;
   if ( tick > tick2 ) tick2 = tick;
   return 0;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
+  const string myname = "TpcSignalMap::addSimChannel: ";
+  Channel chan = simchan.Channel();
+  auto const& tickides = simchan.TDCIDEMap();
+  if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
+  for ( auto const& tickide : tickides ) {
+    Tick tick = tickide.first;
+    // Protect against negative ticks.
+    if ( tick > 63000 ) continue;
+    auto& ides = tickide.second;
+    for ( auto& ide : ides ) {
+      if ( abs(ide.trackID) == tid ) {
+        //Signal sig = ide.numElectrons;
+        Signal sig = ide.energy;
+        if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
+        addSignal(chan, tick, sig);
+      } else {
+        if ( dbg() > 1 ) std::cout << myname << "  Skipping track " << ide.trackID << endl;
+      }
+    }  // End loop over IDE's for this tick
+  }  // End loop over ticks for this sim channel
+  return 0;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::addSimChannel(const sim::SimChannel& sch) {
+  if ( mcinfo() == nullptr ) return -1;
+  return addSimChannel(sch, mcinfo()->trackID);
 }
 
 //**********************************************************************
@@ -178,30 +227,6 @@ int TpcSignalMap::addCluster(const AssociatedHits& hits, int dbg) {
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
-  const string myname = "TpcSignalMap::addSimChannel: ";
-  Channel chan = simchan.Channel();
-  auto const& tickides = simchan.TDCIDEMap();
-  if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
-  for ( auto const& tickide : tickides ) {
-    Tick tick = tickide.first;
-    auto& ides = tickide.second;
-    for ( auto& ide : ides ) {
-      if ( abs(ide.trackID) == tid ) {
-        //Signal sig = ide.numElectrons;
-        Signal sig = ide.energy;
-        if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
-        addSignal(chan, tick, sig);
-      } else {
-        if ( dbg() > 1 ) std::cout << myname << "  Skipping track " << ide.trackID << endl;
-      }
-    }  // End loop over IDE's for this tick
-  }  // End loop over ticks for this sim channel
-  return 0;
-}
-
-//**********************************************************************
-
 int TpcSignalMap::buildHits() {
   const string myname = "TpcSignalMap::buildHits: ";
   // Loop over channels.
@@ -254,8 +279,38 @@ const TpcSignalMap::HitChannelMap& TpcSignalMap::hitSignalMap() const {
 //**********************************************************************
 
 Index TpcSignalMap::ropNbin(Index irop) const {
-  if ( irop >=  m_ropnbin.size() ) return 0;
+  if ( irop >= m_ropnbin.size() ) return 0;
   return m_ropnbin[irop];
+}
+
+//**********************************************************************
+
+bool TpcSignalMap::haveMcinfo() const {
+  return m_pmci.get() != nullptr;
+}
+
+//**********************************************************************
+
+const TpcSignalMap::McInfo* TpcSignalMap::mcinfo() const {
+  return m_pmci.get();
+}
+
+//**********************************************************************
+
+void TpcSignalMap::setRop(Index rop) {
+  m_rop = rop;
+}
+
+//**********************************************************************
+
+bool TpcSignalMap::haveRop() const {
+  return m_rop != badIndex();
+}
+
+//**********************************************************************
+
+Index TpcSignalMap::rop() const {
+  return m_rop;
 }
 
 //**********************************************************************
@@ -391,7 +446,7 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
     out << hdrprefix << "TpcSignalMap map has " << setw(3) << channelCount() << " channels with "
-        << setw(4) << hitCount() << " hits and " << setw(4) << tickCount() << " ticks." << endl;
+        << setw(6) << hitCount() << " hits and " << setw(5) << tickCount() << " ticks." << endl;
   } else if ( detail1 == 1 ) {
     out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels:" << endl;
     Tick badtick = badTick();
@@ -471,6 +526,49 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
     }
   }
   return out;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms) const {
+  const string myname = "TpcSignalMap::splitByRop: ";
+  if ( geometryHelper() == nullptr ) {
+    cout << myname << "Geometry helper not found. " << endl;
+    return 1;
+  }
+  if ( haveRop() ) {
+    cout << myname << "ROP is already assigned." << endl;
+    return 2;
+  }
+  const GeoHelper& geohelp = *geometryHelper();
+  for ( Index irop=0; irop<geohelp.nrop(); ++irop ) {
+    if ( dbg() ) cout << myname << "Creating map for ROP " << irop << endl;
+    TpcSignalMapPtr psm(new TpcSignalMap);
+    Index ichbegin = geohelp.ropFirstChannel(irop);
+    Index ichend = ichbegin + geohelp.ropNChannel(irop);
+    for ( Channel ich=ichbegin; ich<ichend; ++ich ) {
+      TickChannelMap::const_iterator its = m_ticksig.find(ich);
+      HitChannelMap::const_iterator ihs = m_hitsig.find(ich);
+      if ( its != m_ticksig.end() ) {
+        for ( auto ticksig : its->second ) {
+          psm->addSignal(ich, ticksig.first, ticksig.second);
+        }
+      }
+      if ( ihs != m_hitsig.end() ) psm->m_hitsig[ich] = ihs->second;
+    }
+    if ( dbg() ) cout << myname << "  ROP " << irop << " has "
+                      << psm->tickCount() << " ticks and "
+                      << psm->hitCount() << " hits." << endl;
+    if ( psm->m_ticksig.size() || psm->m_hitsig.size() ) {
+      if ( dbg() ) cout << myname << "  Creating new map." << endl;
+      psm->m_name = m_name + geohelp.ropName(irop);
+      psm->m_pgh = m_pgh;
+      psm->m_pmci = m_pmci;
+      psm->m_rop = irop;
+      tsms.push_back(psm);
+    }
+  }
+  return 0;
 }
 
 //**********************************************************************
