@@ -121,8 +121,11 @@ public:
   unsigned int channelCount() const;
 
   // The number of included ticks.
-  unsigned int size() const;
   unsigned int tickCount() const;
+
+  // The number of channel-tick bins.
+  unsigned int binCount() const;
+  unsigned int size() const;
 
   // The number of hits.
   unsigned int hitCount() const;

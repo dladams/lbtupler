@@ -60,7 +60,7 @@ TpcSignalMap::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
 
 TpcSignalMap::TpcSignalMap()
 : m_pgh(nullptr),
-  m_tickRange(badTick(), badTick()),
+  m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
   m_rop(badIndex()) { }
 
 //**********************************************************************
@@ -347,12 +347,6 @@ TickRange TpcSignalMap::tickRange() const {
 
 //**********************************************************************
 
-unsigned int TpcSignalMap::size() const {
-  return tickCount();
-}
-
-//**********************************************************************
-
 unsigned int TpcSignalMap::channelCount() const {
   return tickSignalMap().size();
 }
@@ -360,11 +354,23 @@ unsigned int TpcSignalMap::channelCount() const {
 //**********************************************************************
 
 unsigned int TpcSignalMap::tickCount() const {
+  return tickRange().size();
+}
+
+//**********************************************************************
+
+unsigned int TpcSignalMap::binCount() const {
   unsigned int nbin = 0;
   for ( const auto& echan : tickSignalMap() ) {
     nbin += echan.second.size();
   }
   return nbin;
+}
+
+//**********************************************************************
+
+unsigned int TpcSignalMap::size() const {
+  return binCount();
 }
 
 //**********************************************************************
@@ -445,7 +451,7 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   int detail1 = fulldetail - detail2*10;
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
-    out << hdrprefix << "TpcSignalMap map has " << setw(3) << channelCount() << " channels with "
+    out << hdrprefix << "TpcSignalMap map has " << setw(4) << channelCount() << " channels with "
         << setw(6) << hitCount() << " hits and " << setw(5) << tickCount() << " ticks." << endl;
   } else if ( detail1 == 1 ) {
     out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels:" << endl;

@@ -32,6 +32,7 @@ public:
   const T& last() const { return m_val2; }
   Iter begin() const { return Iter(m_val1); }
   Iter end() const { T val = m_val2; return Iter(++val); }
+  unsigned int size() const { if ( m_val2 <= m_val1 ) return 0; return m_val2 - m_val1 + 1; }
 private:
   T m_val1;
   T m_val2;

@@ -39,14 +39,17 @@ public:
   // Vector of reference objects.
   const C1& referenceVector() const { return m_c1; }
 
-  // Vector of reconstructed objects.
-  const C2& reconstructedVector() const { return m_c2; }
+  // Vector of matched objects.
+  const C2& matchVector() const { return m_c2; }
 
   // Distance metric.
   Distance distance() const;
 
   // Maximum allowed distance.
   double maxDistance() const;
+
+  // # of entries (ref-match pairs)
+  unsigned int size() const;
 
   // Rec index for each ref index.
   int matchIndex(Index iref) const;

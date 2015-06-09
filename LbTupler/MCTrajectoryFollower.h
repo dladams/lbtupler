@@ -29,9 +29,12 @@ public:
   typedef std::vector<simb::MCParticle> MCParticleVector; 
 
   // Ctor.
-  //   filltree - If true the Root tree is created
+  //   dsmax  - Maximum step size used inf following trajectory.
+  //            Interpolation is used when the steps are larger.
+  //   tname - Name for the Root tree. If blank, no tree is filled.
   //   geohelp - GeoHelper used to access geometry information
-  MCTrajectoryFollower(double dsmax, bool filltree =true, const GeoHelper* geohelp =nullptr, int dbg =0);
+  MCTrajectoryFollower(double dsmax, std::string tname, const GeoHelper* geohelp =nullptr,
+                       unsigned int minNptdet =0, int dbg =0);
 
   // Dtor.
   ~MCTrajectoryFollower();
@@ -42,14 +45,19 @@ public:
   // Call this to add an MCParticle to the current event.
   //   par - The input MCParticle.
   //   pmctp - If non-null, the MCparticle is used to fill this performance object.
-  int addMCParticle(const simb::MCParticle& par, TpcSignalMap* pmtsm =nullptr);
+  //   useDescendants - If true, descendants are also added to the signal map.
+  // Returns 0 if particle is accepted, >0 if rejected, <0 for error.
+  int addMCParticle(const simb::MCParticle& par, TpcSignalMap* pmtsm =nullptr, bool useDescendants =false);
 
 private:
 
   // Control parameters.
-  int m_dbg;                        // Debug level. Larger for more log noise.
-  bool m_filltree;                  // Create and fill the MCParticle tree.
-  double m_dsmax;                   // Maximum step size for interpolation of trajectory
+  int m_dbg;                     // Debug level. Larger for more log noise.
+  std::string m_tname;           // Tree name.
+  bool m_filltree;               // Create and fill the MCParticle tree.
+  double m_dsmax;                // Maximum step size for interpolation of trajectory
+  unsigned int m_minNptdet;      // Min # points in detector to keep the particle
+  int m_generation;              // Depth in the descendant tree.
 
   // The tree.
   TTree* m_ptree;
@@ -61,6 +69,7 @@ private:
   int fpdg;                  // PDG ID
   int frpdg;                 // reduced PDG ID
   int fproc;                 // Process
+  int fitrk;                 // Track index (0, 1, ...)
   int ftrackid;              // Track ID
   int fparent;               // Parent track ID
   unsigned int fnchild;      // # children
@@ -117,8 +126,11 @@ private:
   // Geometry.
   const GeoHelper* m_geohelp;
 
-  // # detector poings for each MC particle.
+  // # detector points for each MC particle.
   std::map<unsigned int, unsigned int> m_ndetptmap;
+
+  const art::Event* m_pevt;
+  const MCParticleVector* m_ppars;
 
 }; // class MCTrajectory
 

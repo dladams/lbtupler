@@ -37,8 +37,13 @@ using geo::kZ;
 //************************************************************************
 
 // Constructor
-MCTrajectoryFollower::MCTrajectoryFollower(double dsmax, bool filltree, const GeoHelper* pgeohelp, int dbg)
-: m_dbg(dbg), m_filltree(filltree), m_dsmax(dsmax), m_geohelp(pgeohelp)  {
+MCTrajectoryFollower::
+MCTrajectoryFollower(double dsmax, string tname, const GeoHelper* pgeohelp,
+                     unsigned int minNptdet, int dbg)
+: m_dbg(dbg), m_tname(tname), m_filltree(tname.size()), m_dsmax(dsmax), m_minNptdet(minNptdet),
+  m_generation(0), 
+  m_geohelp(pgeohelp),
+  m_pevt(nullptr), m_ppars(nullptr)  {
 
   const string myname = "MCTrajectory:ctor: ";
 
@@ -53,7 +58,7 @@ MCTrajectoryFollower::MCTrajectoryFollower(double dsmax, bool filltree, const Ge
   art::ServiceHandle<art::TFileService> tfs;
 
   // Define the tree.
-  m_ptree = tfs->make<TTree>("LbTuplerSimulation",    "LbTuplerSimulation");
+  if ( m_filltree ) m_ptree = tfs->make<TTree>(tname.c_str(), m_tname.c_str());
 
   // Set array sizes.
   fnpttpc.resize(geohelp.ntpc());
@@ -68,6 +73,7 @@ MCTrajectoryFollower::MCTrajectoryFollower(double dsmax, bool filltree, const Ge
     m_ptree->Branch("pdg",         &fpdg,            "pdg/I");              // PDG ID
     m_ptree->Branch("rpdg",        &frpdg,           "rpdg/I");             // reduced PDG ID
     m_ptree->Branch("proc",        &fproc,           "proc/I");             // reduced PDG ID
+    m_ptree->Branch("itrk",        &fitrk,           "itrk/I");             // Track index
     m_ptree->Branch("trackid",     &ftrackid,        "trackid/I");          // Track ID
     m_ptree->Branch("parent",      &fparent,         "parent/I");           // Parent 
     m_ptree->Branch("nchild",      &fnchild,         "nchild/I");           // # children
@@ -118,6 +124,15 @@ MCTrajectoryFollower::MCTrajectoryFollower(double dsmax, bool filltree, const Ge
     m_ptree->Branch("dety2",        &fdety2,        "dety2/F");
     m_ptree->Branch("detz2",        &fdetz2,        "detz2/F");
   }
+
+  if ( m_dbg >= 0 ) {
+    cout << myname << "Initialization complete." << endl;
+    cout << myname << "    Debug level: " << m_dbg << endl;
+    cout << myname << "      Tree name: " << m_tname << endl;
+    cout << myname << "      Fill tree: " << m_filltree << endl;
+    cout << myname << "  Max step [cm]: " << m_dsmax << endl;
+  }
+
 }
  
 //************************************************************************
@@ -136,6 +151,15 @@ int MCTrajectoryFollower::beginEvent(const art::Event& event, const MCParticleVe
     return 1;
   }
 
+  // Check generation.
+  if ( m_generation ) {
+    cout << myname << "ERROR: Generation is not current!" << endl;
+    return 2;
+  }
+
+  m_pevt = &event;
+  m_ppars = &pars;
+
   // Start by fetching some event information.
   fevent  = event.id().event(); 
   fRun    = event.run();
@@ -150,6 +174,7 @@ int MCTrajectoryFollower::beginEvent(const art::Event& event, const MCParticleVe
   string sevtf = sevt;
   while ( sevtf.size() < 4 ) sevtf = "0" + sevtf;
 
+  fitrk = 0;
   m_ndetptmap.clear();
   // Loop over particles and fetch the # points inside the detector for each.
   // Might later want to add the # descendants with points inside the detector.
@@ -171,11 +196,12 @@ int MCTrajectoryFollower::beginEvent(const art::Event& event, const MCParticleVe
 
 //************************************************************************
 
-int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm) {
+int MCTrajectoryFollower::
+addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendants) {
   const string myname = "MCTrajectory::addMCParticle: ";
   if ( m_geohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
-    return 1;
+    return -1;
   }
   const GeoHelper& geohelp = *m_geohelp;
   ftrackid = particle.TrackId();
@@ -423,7 +449,45 @@ int MCTrajectoryFollower::addMCParticle(const MCParticle& particle, TpcSignalMap
 
   }  // End loop over trajectory points.
 
-  if ( m_filltree ) m_ptree->Fill();
+  // Follow the descendants.
+  if ( useDescendants ) {
+    int nchi = particle.NumberDaughters();
+    if ( m_dbg > 1 ) cout << myname << "Descendant count for track " << particle.TrackId()
+                          << ": " << nchi << endl;
+    for ( int ichi=0; ichi<nchi; ++ichi ) {
+      int chtid = particle.Daughter(ichi);
+      bool foundChild = false;
+      for ( const MCParticle& chpar : *m_ppars ) {
+        if ( chpar.TrackId() == chtid ) {
+          if ( m_dbg > 1 ) cout << myname << "  Adding child " << chtid << endl;
+          ++m_generation;
+          this->addMCParticle(chpar, pmtsm, true);
+          --m_generation;
+          if ( m_dbg > 1 ) cout << myname << "  New size is " << pmtsm->size() << endl;
+          foundChild = true;
+          break;
+        }
+      }  // End loop over all particles
+      if ( ! foundChild ) {
+        cout << myname << "ERROR: Child not found!" << endl;
+      }
+    }  // End loop over children.
+  } else {
+    if ( m_dbg > 1 ) cout << myname << "Not adding descendants." << endl;
+  }  // end useDescendants
+
+  // Exit if this is a descendant.
+  if ( m_generation ) return 0;
+
+  // Test if this particle is accepted.
+  if ( fnptdet < m_minNptdet ) return 1;
+
+  // Fill the tree.
+  if ( m_filltree ) {
+    m_ptree->Fill();
+    if ( m_dbg > 0 ) cout << myname << "Filled tree. New entry count: " << m_ptree->GetEntries() << endl;
+  }
+  ++fitrk;
 
   return 0;
 

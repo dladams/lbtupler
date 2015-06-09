@@ -131,6 +131,12 @@ double TpcSignalMatcher::maxDistance() const {
 
 //**********************************************************************
 
+unsigned int TpcSignalMatcher::size() const {
+  return  m_matchIndex.size();
+}
+
+//**********************************************************************
+
 int TpcSignalMatcher::matchIndex(Index iref) const {
   if ( iref >= m_matchIndex.size() ) return -1;
   Index i2 = m_matchIndex[iref];
@@ -151,19 +157,27 @@ float TpcSignalMatcher::matchDistance(Index iref) const {
 
 string TpcSignalMatcher::show(int opt) const {
   ostringstream ssout;
-  int wnam = 12;
+  int widx = 4;
+  int wnam = 14;
   int wnch = 5;
+  int wnti = 5;
+  int wnbi = 7;
   int wdis = 9;
   if ( opt == 0 ) {
     ssout << setw(wnam) << "Reference"
           << " " << setw(wnch) << "Nchan"
+          << " " << setw(wnch) << "Ntick"
+          << " " << setw(wnbi) << "Nbin"
           << " " << setw(wnam) << "Matched"
           << " " << setw(wdis) << "Distance";
     for ( Index i1=0; i1<m_c1.size(); ++i1 ) {
       ssout << "\n";
+      ssout << setw(widx) << i1;
+      ssout << " " << setw(wnam) << m_c1[i1]->name()
+            << " " << setw(wnch) << m_c1[i1]->channelCount()
+            << " " << setw(wnti) << m_c1[i1]->tickCount()
+            << " " << setw(wnbi) << m_c1[i1]->binCount();
       int i2 = matchIndex(i1);
-      ssout << setw(wnam) << m_c1[i1]->name()
-            << " " << setw(wnch) << m_c1[i1]->tickSignalMap().size();
       if ( i2 >= 0 ) {
         ssout << " " << setw(wnam) << m_c2[i2]->name()
               << " " << setw(wdis) << matchDistance(i1);

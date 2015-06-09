@@ -42,7 +42,7 @@ create(string slab, unsigned int chan1, unsigned int chan2, string stitle,
   if ( atick2 >= atick1 ) {
     tick1 = atick1 - 5;
     tick2 = atick2 + 6;
-    int fac = 100;
+    int fac = 50;
     int dtick1 = tick1/fac;
     int dtick2 = tick2/fac;
     if ( tick1 < 0 ) dtick1 -= 1;
