@@ -83,6 +83,7 @@ public:
   Index ropFirstChannel(Index irop) const { return m_ropfirstchan.at(irop); }
   Index ropNChannel(Index irop) const { return m_ropnchan.at(irop); }
   geo::View_t ropView(Index irop) const { return m_ropview.at(irop); }
+  const IndexVector& ropTpcs(Index irop) const { return m_roptpc.at(irop); }
 
   // Return the ROP for a TPC plane.
   Index rop(geo::PlaneID pid) const;
@@ -118,7 +119,7 @@ private:
   IndexVector m_apanrop;        // # ROP for each APA
   IndexVector m_ropfirstchan;   // First channel for each ROP;
   IndexVector m_ropnchan;       // # channels for each ROP;
-  IndexVector m_roptpc;         // Global TPC index for each ROP.
+  IndexVectorVector m_roptpc;   // Global TPC indices for each ROP.
   IndexVector m_ropapa;         // Global APA index for each ROP.
   ViewVector m_ropview;         // View (kU, kV, kZ) for each ROP
   NameVector m_ropname;         // Name for each ROP

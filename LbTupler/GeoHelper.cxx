@@ -231,12 +231,18 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   }  // end loop over cryostats
   // Display ROPs.
   cout << prefix << "Detector ROP count: " << nrop() << endl;
-  cout << prefix << setw(18) << "Name"
-       << setw(5) << "View" << setw(8) << "First ch" << setw(6) << "Nchan" << endl;
+  cout << prefix << setw(4) << "ROP" << setw(12) << "Name"
+       << setw(5) << "View" << setw(8) << "1st ch" << setw(6) << "Nchan" << setw(6) << "TPCs" << endl;
   for ( Index irop=0; irop<nrop(); ++irop ) {
-    cout << prefix << setw(4) << irop << ". " << setw(12) << ropName(irop)
+    ostringstream ssrops;
+    for ( Index itpc : ropTpcs(irop) ) {
+      if ( ssrops.str().size() ) ssrops << ",";
+      ssrops << itpc;
+    }
+    cout << prefix << setw(4) << irop << setw(12) << ropName(irop)
          << setw(5) << ropView(irop) << setw(8) << ropFirstChannel(irop)
-         << setw(6) << ropNChannel(irop) << endl;
+         << setw(6) << ropNChannel(irop) << setw(6) << ssrops.str();
+    cout << endl;
   }
 /*
       const double* pos0 = tpcgeo.PlaneLocation(0);
@@ -362,7 +368,9 @@ Status GeoHelper::fillStandardApaMapping() {
           m_ropfirstchan.push_back(firstchan);
           m_ropnchan.push_back(lastchan - firstchan + 1 );
           if ( m_dbg > 2 ) cout << myname << "Recording ROP TPC." << endl;
-          m_roptpc.push_back(itpc);
+          IndexVector tpcs;
+          tpcs.push_back(itpc);
+          m_roptpc.push_back(tpcs);
           m_ropapa.push_back(iapa);
           ostringstream ssrop;
           if ( m_dbg > 2 ) cout << myname << "Finding view." << endl;
@@ -385,8 +393,18 @@ Status GeoHelper::fillStandardApaMapping() {
           m_ropname.push_back(ssrop.str());
           ++m_nrop;
           ++itdcrop;
+        // ROP already exists--find the ROP for this plane.
         } else {
-          if ( m_dbg > 2 ) cout << myname << "No action for existing ROP." << endl;
+          Index irop = channelRop(firstchan);
+          Index irop2 = channelRop(lastchan);
+          if ( irop2 != irop ) {
+            cout << myname << "ERROR: TPC plane covers multiple ROPs." << endl;
+          }
+          IndexVector& tpcs = m_roptpc[irop];
+          if ( std::find(tpcs.begin(), tpcs.end(), itpc) == tpcs.end() ) {
+            if ( m_dbg > 2 ) cout << myname << "Add TPC " << itpc << " to ROP " << irop << endl;
+            tpcs.push_back(itpc);
+          }
         }
         // Add this TPC plane to the TPC-plane-to-ROP map.
         if ( m_dbg > 1 ) cout << myname << "Adding plane to ROP map." << endl;

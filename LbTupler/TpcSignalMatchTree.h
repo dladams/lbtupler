@@ -50,6 +50,7 @@ private:
   int frop;           // ROP
   int frnbin;         // # channel-tick bins in the reference.
   int fmnbin;         // # channel-tick bins in the match.
+  int frnseg;         // # segments attached to the reference.
 
 }; // class TpcSignalMatchTree
 

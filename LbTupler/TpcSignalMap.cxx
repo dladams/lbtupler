@@ -227,6 +227,46 @@ int TpcSignalMap::addCluster(const AssociatedHits& hits, int dbg) {
 
 //**********************************************************************
 
+int TpcSignalMap::addSegment(TpcSegmentPtr pseg) {
+  const string myname = "TpcSignalMap::addSegment: ";
+  if ( dbg() ) cout << myname << "Adding a segment." << endl;
+  m_segments.push_back(pseg);
+  return 0;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::addSegments(const TpcSegmentVector& segs) {
+  const string myname = "TpcSignalMap::addSegments: ";
+  m_segments.insert(m_segments.end(), segs.begin(), segs.end());
+  return 0;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::copySegments(const TpcSignalMap& tsm) {
+  const string myname = "TpcSignalMap::copySegments: ";
+  return addSegments(tsm.segments());
+}
+
+//**********************************************************************
+
+int TpcSignalMap::copySegments(const TpcSignalMapVector& tsms) {
+  const string myname = "TpcSignalMap::copySegments: ";
+  if ( ! haveMcinfo() ) return 1;
+  int itrk = mcinfo()->trackID;
+  for ( const TpcSignalMapPtr& ptsm : tsms ) {
+    if ( ptsm->haveMcinfo() ) {
+      if ( ptsm->mcinfo()->trackID == itrk ) {
+        copySegments(*ptsm);
+      }
+    }
+  }
+  return 0;
+}
+
+//**********************************************************************
+
 int TpcSignalMap::buildHits() {
   const string myname = "TpcSignalMap::buildHits: ";
   // Loop over channels.
@@ -375,6 +415,17 @@ unsigned int TpcSignalMap::size() const {
 
 //**********************************************************************
 
+unsigned int TpcSignalMap::ropCount() const {
+  const GeoHelper& geohelp = *geometryHelper();
+  unsigned int nrop = 0;
+  for ( Index irop=0; irop<geohelp.nrop(); ++irop ) {
+    if ( ropNbin(irop) ) ++nrop;
+  }
+  return nrop;
+}
+
+//**********************************************************************
+
 unsigned int TpcSignalMap::hitCount() const {
   unsigned int nbin = 0;
   for ( const auto& echan : hitSignalMap() ) {
@@ -451,8 +502,18 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   int detail1 = fulldetail - detail2*10;
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
-    out << hdrprefix << "TpcSignalMap map has " << setw(4) << channelCount() << " channels with "
-        << setw(6) << hitCount() << " hits and " << setw(5) << tickCount() << " ticks." << endl;
+    out << hdrprefix;
+    if ( haveMcinfo() ) out << "MC track " << setw(3) << mcinfo()->trackID << " ";
+    out << "TpcSignalMap " << setw(14) << name() << " ";
+    if ( rop() == badIndex() ) {
+      unsigned int nrop = ropCount();
+      out << " uses " << setw(2) << nrop << " ROPs and";
+    } else {
+      out << " with ROP " << setw(2) << rop();
+    }
+    out << " has " << setw(4) << channelCount() << " channels with "
+        << setw(6) << hitCount() << " hits and " << setw(5) << tickCount() << " ticks"
+        << " and " << setw(2) << segments().size() << " segments." << endl;
   } else if ( detail1 == 1 ) {
     out << hdrprefix << "TpcSignalMap map has " << channelCount() << " channels:" << endl;
     Tick badtick = badTick();
@@ -571,10 +632,27 @@ int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms) const {
       psm->m_pgh = m_pgh;
       psm->m_pmci = m_pmci;
       psm->m_rop = irop;
+      // Find segments that use this ROP.
+      for ( TpcSegmentPtr pseg : m_segments ) {
+        for ( Index itpc : geohelp.ropTpcs(irop) ) {
+          if ( int(itpc) == pseg->tpc ) {
+            psm->m_segments.push_back(pseg);
+            break;
+          }
+        }
+      }
+      if ( dbg() ) cout << myname << "Kept " << psm->segments().size()
+                        << " of " << m_segments.size() << endl;
       tsms.push_back(psm);
     }
   }
   return 0;
+}
+
+//**********************************************************************
+
+const TpcSegmentVector& TpcSignalMap::segments() const {
+  return m_segments;
 }
 
 //**********************************************************************

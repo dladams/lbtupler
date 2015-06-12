@@ -16,6 +16,7 @@
 #include <memory>
 #include "art/Framework/Core/FindManyP.h"
 #include "TpcTypes.h"
+#include "TpcSegment.h"
 
 namespace simb {
 class MCParticle;
@@ -100,6 +101,18 @@ public:
   // Add the hits and signals associated with a recob::Cluster.
   int addCluster(const AssociatedHits& hits, int verbose =0);
 
+  // Attach a segment to this object.
+  int addSegment(TpcSegmentPtr pseg);
+
+  // Add segments.
+  int addSegments(const TpcSegmentVector& segs);
+
+  // Copy the segments from another signal map;
+  int copySegments(const TpcSignalMap& tsm);
+
+  // Copy the segments from signal maps with the same MC track as this.
+  int copySegments(const TpcSignalMapVector& tsms);
+
   // Build hits from the tick signals in each channel.
   // A hit is a contiguous set of ticks.
   int buildHits();
@@ -126,6 +139,9 @@ public:
   // The number of channel-tick bins.
   unsigned int binCount() const;
   unsigned int size() const;
+
+  // The number of ROPs with signals.
+  unsigned int ropCount() const;
 
   // The number of hits.
   unsigned int hitCount() const;
@@ -154,6 +170,9 @@ public:
   // Return the ROP to which this set of signals is assigned.
   Index rop() const;
 
+  // Return the segments.
+  const TpcSegmentVector& segments() const;
+
   // Output stream.
   //   out - stream to insert output
   //   detail -  0 = single line
@@ -176,14 +195,15 @@ public:
 
 private:
 
-  std::string m_name;        // Name.
-  const GeoHelper* m_pgh;    // Geometry helper maps channels to ROPs.
-  TickChannelMap m_ticksig;  // m_ticksig[chan][tick] is the signal for (chan, tick)
-  HitChannelMap m_hitsig;    // m_hitsig[chan][hit] is the hit for (chan, hit number)
-  TickRange m_tickRange;     // Range of ticks covered by this signal map.
-  IndexVector m_ropnbin;     // Number of filled channel-tick bins for each ROP
-  McInfoPtr m_pmci;          // Manging pointer to MC info.
-  Index m_rop;               // ROP for this object (badIndex() if not defined)
+  std::string m_name;          // Name.
+  const GeoHelper* m_pgh;      // Geometry helper maps channels to ROPs.
+  TickChannelMap m_ticksig;    // m_ticksig[chan][tick] is the signal for (chan, tick)
+  HitChannelMap m_hitsig;      // m_hitsig[chan][hit] is the hit for (chan, hit number)
+  TickRange m_tickRange;       // Range of ticks covered by this signal map.
+  IndexVector m_ropnbin;       // Number of filled channel-tick bins for each ROP
+  McInfoPtr m_pmci;            // Manging pointer to MC info.
+  Index m_rop;                 // ROP for this object (badIndex() if not defined)
+  TpcSegmentVector m_segments; // Attached segments.
 
 };
 

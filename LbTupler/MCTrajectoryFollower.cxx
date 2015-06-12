@@ -198,24 +198,38 @@ int MCTrajectoryFollower::beginEvent(const art::Event& event, const MCParticleVe
 
 int MCTrajectoryFollower::
 addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendants) {
-  const string myname = "MCTrajectory::addMCParticle: ";
+  ostringstream ssgen;
+  ssgen << m_generation;
+  const string myname = "MCTrajectoryFollower::addMCParticle G" + ssgen.str() + ": ";
   if ( m_geohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
     return -1;
   }
   const GeoHelper& geohelp = *m_geohelp;
-  ftrackid = particle.TrackId();
-  fpdg = particle.PdgCode();
-  frpdg = reducedPDG(fpdg);
-  fparent = particle.Mother();
-  fproc = intProcess(particle.Process());
-  if ( fproc < 0 ) {
-    cout << myname << "WARNING: Unknown process: " << particle.Process() << endl;
-  }
-  fnchild = particle.NumberDaughters();
-  if ( fnchild > fmaxchild ) {
-    cout << myname << "WARNING: Too many child particles: " << fnchild << endl;
-    fnchild = fmaxchild;
+  int trackid = particle.TrackId();
+  int pdg = particle.PdgCode();
+  int rpdg = reducedPDG(fpdg);
+  // Set the fields for the first generation.
+  // These should not be overwritten by descendants.
+  if ( m_generation == 0 ) {
+    ftrackid = trackid;
+    fpdg = pdg;
+    frpdg = rpdg;
+    fparent = particle.Mother();
+    fproc = intProcess(particle.Process());
+    if ( fproc < 0 ) {
+      cout << myname << "WARNING: Unknown process: " << particle.Process() << endl;
+    }
+    fnchild = particle.NumberDaughters();
+    if ( fnchild > fmaxchild ) {
+      cout << myname << "WARNING: Too many child particles: " << fnchild << endl;
+      fnchild = fmaxchild;
+    }
+    for ( unsigned int ichi=0; ichi<fnchild; ++ichi ) {
+      unsigned int tid = particle.Daughter(ichi);
+      fchild[ichi] = tid;
+      if ( m_ndetptmap[tid] ) fdetchild[fndetchild++] = tid;
+    }
   }
   fndetchild = 0;
   fndetin = 0;
@@ -224,17 +238,13 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
   fntpcout = 0;
   fncryin = 0;
   fncryout = 0;
-  for ( unsigned int ichi=0; ichi<fnchild; ++ichi ) {
-    unsigned int tid = particle.Daughter(ichi);
-    fchild[ichi] = tid;
-    if ( m_ndetptmap[tid] ) fdetchild[fndetchild++] = tid;
-  }
   if ( m_dbg > 2 ) {
-    cout << myname << "ID=" << ftrackid << ", PDG=" << fpdg
-         << ", RPDG=" << frpdg
+    cout << myname << "Begin following ID=" << trackid << ", PDG=" << pdg
+         << ", RPDG=" << rpdg
          << ", status=" << particle.StatusCode()
          << ", Process: " << particle.Process() << "(" << fproc << ")"
-         << ", Parent: " << fparent
+         << ", Parent: " << particle.Mother()
+         << ", Ancestor: " << ftrackid
          << endl;
   }
 
@@ -283,6 +293,9 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
   fdetx2 = 1.e6;
   fdety2 = 1.e6;
   fdetz2 = 1.e6;
+  TpcSegmentPtr pseg;
+  TpcSegment* pseg0 = nullptr;
+  TpcSegmentVector segments;
   for ( unsigned int ipt=0; ipt<numberTrajectoryPoints; ++ipt ) {
     if ( ipt >= maxpt ) {
       cout << myname << "Found more than " << maxpt << " trajectory points."
@@ -357,8 +370,16 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
           fptztick[ipt] = pp.tick;
         }
       }
+      if ( !pseg || pseg->tpc != int(itpc)  ) {
+        if ( m_dbg > 2 ) cout << myname << "Creating new segment for TPC " << itpc << "." << endl;
+        pseg = TpcSegmentPtr(new TpcSegment(itpc, x, y, z, e, 0));
+        segments.push_back(pseg);
+      } else {
+        if ( m_dbg > 2 ) cout << myname << "  Adding point to segment." << endl;
+        pseg->addPoint(x, y, z, e);
+      }
     }
-    if ( m_dbg > 3 ) cout << myname << "  MC Particle " << ftrackid
+    if ( m_dbg > 3 ) cout << myname << "  MC Particle " << trackid
                          << " point " << fnpt << ": xyzt=("
                          << x << ", " << y << ", " << z << ", " << t << ")"
                          << ", E=" << 1000*e << " MeV"
@@ -369,19 +390,26 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
       if ( indet0 && !indet ) ++fndetout;
       if ( tpcid.isValid && (!tpcid0.isValid or tpcid.TPC != tpcid0.TPC ) ) {
         ++fntpcin;
+        pseg->enter = 1;
         if ( m_dbg > 3 ) {
           cout << myname << "    Entering TPC " << tpcid.TPC;
           if ( tpcid0.isValid ) cout << ", exiting TPC " << tpcid0.TPC;
           cout << endl;
         }
+        ++fntpcin;
+        pseg->enter = 1;
       }
       if ( tpcid0.isValid && (!tpcid.isValid or tpcid.TPC != tpcid0.TPC ) ) {
-        ++fntpcout;
         if ( m_dbg > 3 ) {
-          cout << myname << "    Exiting TPC " << tpcid0.TPC;
+          cout << myname << "    Exited TPC " << tpcid0.TPC;
           if ( tpcid.isValid ) cout << ", entering TPC " << tpcid.TPC;
           cout << endl;
         }
+        if ( pseg0 == nullptr ) {
+          cout << myname << "ERROR: Exited TPC with a null segment pointer." << endl;
+        }
+        ++fntpcout;
+        pseg0->exit = 1;
       }
       if ( icry!=notcry && icry!=icry0 ) {
         ++fncryin;
@@ -403,9 +431,9 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
         cout << myname << "    Last trajectory point; # children is " << fnchild << endl; 
       }
     }
-    // Fill MCTrackPerf with dE for each pair of adjacent tracjectory points.
+    // Fill the signal map with dE for each pair of adjacent trajectory points.
     // Increase the number of points to ensure granularity less than fmcpdsmax;
-    if ( ipt != 0 && indet0 && indet) {
+    if ( pmtsm != nullptr && detot > 0 && ipt != 0 && indet0 && indet) {
       double dx = x - x0;
       double dy = y - y0;
       double dz = z - z0;
@@ -432,7 +460,7 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
           }
           if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
           if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
-          if ( pmtsm != nullptr ) pmtsm->addSignal(pp.channel, pp.tick, destep);
+          pmtsm->addSignal(pp.channel, pp.tick, destep);
         }
       }
       // If this and the last point are in the detector, increment the detector path length.
@@ -446,24 +474,42 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
     indet0 = indet;
     tpcid0 = tpcid;
     icry0 = icry;
+    pseg0 = pseg.get();
 
   }  // End loop over trajectory points.
+
+  // Add segments to signal map.
+  if ( pmtsm ) {
+    for ( const TpcSegmentPtr& pseg : segments ) {
+      float de = pseg->e1 - pseg->e2;
+      if ( de > 0.0 ) {
+        if ( m_dbg > 2 ) cout << myname << "Keeping segment for TPC " << pseg->tpc << "." << endl;
+        pmtsm->addSegment(pseg);
+      } else {
+        if ( m_dbg > 2 ) cout << myname << "Dropping segment for TPC " << pseg->tpc << "." << endl;
+      }
+    }
+  }
+
+  if ( m_dbg > 0 && pmtsm != nullptr ) {
+    cout << myname << "Finished trajectory for ID=" << trackid
+         << ". Signal map bin count is " << pmtsm->size() << "." << endl;
+  }
 
   // Follow the descendants.
   if ( useDescendants ) {
     int nchi = particle.NumberDaughters();
-    if ( m_dbg > 1 ) cout << myname << "Descendant count for track " << particle.TrackId()
+    if ( m_dbg > 1 ) cout << myname << "Descendant count for ID=" << trackid
                           << ": " << nchi << endl;
     for ( int ichi=0; ichi<nchi; ++ichi ) {
       int chtid = particle.Daughter(ichi);
       bool foundChild = false;
       for ( const MCParticle& chpar : *m_ppars ) {
         if ( chpar.TrackId() == chtid ) {
-          if ( m_dbg > 1 ) cout << myname << "  Adding child " << chtid << endl;
+          if ( m_dbg > 1 ) cout << myname << "---Adding child " << chtid << endl;
           ++m_generation;
           this->addMCParticle(chpar, pmtsm, true);
           --m_generation;
-          if ( m_dbg > 1 ) cout << myname << "  New size is " << pmtsm->size() << endl;
           foundChild = true;
           break;
         }
@@ -479,8 +525,19 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
   // Exit if this is a descendant.
   if ( m_generation ) return 0;
 
+  bool keep = fnptdet >= m_minNptdet;
+  if ( m_dbg > 1 ) {
+    cout << myname << "End firstgen ID=" << trackid
+         << " Keep=" << keep;
+    if ( pmtsm != nullptr ) {
+      cout << " Nbin=" << pmtsm->binCount()
+           << " Nseg=" << pmtsm->segments().size();
+    }
+    cout << "." << endl;
+  }
+
   // Test if this particle is accepted.
-  if ( fnptdet < m_minNptdet ) return 1;
+  if ( ! keep ) return 1;
 
   // Fill the tree.
   if ( m_filltree ) {

@@ -43,6 +43,7 @@ TpcSignalMatchTree::TpcSignalMatchTree(string tname)
   m_ptree->Branch("rop",         &frop,            "rop/I");       // read out plane index
   m_ptree->Branch("rnbin",       &frnbin,          "rnbin/I");     // # bins in ref
   m_ptree->Branch("mnbin",       &fmnbin,          "mnbin/I");     // # bins in ref
+  m_ptree->Branch("rnseg",       &frnseg,          "rnseg/I");     // # bins in ref
 
   cout << myname << "Initialization complete." << endl;
   cout << myname << "   Tree: " << m_ptree->GetName() << endl;
@@ -70,6 +71,7 @@ int TpcSignalMatchTree::fill(const art::Event& evt, const TpcSignalMatcher& matc
     frop = rtsm.rop();
     fmnbin = mtsm.binCount();
     frnbin = rtsm.binCount();
+    frnseg = rtsm.segments().size();
     m_ptree->Fill();
   }
 

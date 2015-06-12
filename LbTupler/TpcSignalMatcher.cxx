@@ -164,7 +164,8 @@ string TpcSignalMatcher::show(int opt) const {
   int wnbi = 7;
   int wdis = 9;
   if ( opt == 0 ) {
-    ssout << setw(wnam) << "Reference"
+    ssout << setw(widx) << "idx"
+          << " " << setw(wnam) << "Reference"
           << " " << setw(wnch) << "Nchan"
           << " " << setw(wnch) << "Ntick"
           << " " << setw(wnbi) << "Nbin"
