@@ -5,6 +5,9 @@
 //
 // Helper for accessing LArSoft geometry information.
 
+#ifndef GeoHelper_H
+#define GeoHelper_H
+
 #include <string>
 #include <iosfwd>
 #include <vector>
@@ -125,3 +128,5 @@ private:
   NameVector m_ropname;         // Name for each ROP
   PlaneIDIndexMap m_tpprop;     // Global ROP index for each TPC plane.
 };
+
+#endif

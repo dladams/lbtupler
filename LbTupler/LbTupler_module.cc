@@ -310,7 +310,7 @@ void LbTupler::beginJob() {
   // the signal map for each selected MC particle.
   unsigned int minNptdet = 1;
   m_pmctrajmc = new MCTrajectoryFollower(fmcpdsmax, "LbTuplerSimulation", fgeohelp, minNptdet, 0);
-  m_pmctrajmd = new MCTrajectoryFollower(fmcpdsmax, "", fgeohelp, 0, 3);
+  m_pmctrajmd = new MCTrajectoryFollower(fmcpdsmax, "", fgeohelp, 0, 0);
 
   // Match trees.
   m_ptsmtSC = new TpcSignalMatchTree("SCClusterMatch");
@@ -439,9 +439,12 @@ void LbTupler::analyze(const art::Event& event) {
   string sevtf = sevt;
   while ( sevtf.size() < 4 ) sevtf = "0" + sevtf;
 
+  // Create directory for event-level histograms.
+  art::TFileDirectory htfs = ptfs->mkdir("event" + sevt);
+
   // Channel-tick histogram for the simulation data products.
-  ChannelTickHistCreator hcreateSim(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 1.0, 20);
-  ChannelTickHistCreator hcreateSimPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 5.0, 20);
+  ChannelTickHistCreator hcreateSim(htfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 1.0, 20);
+  ChannelTickHistCreator hcreateSimPeak(htfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 5.0, 20);
 
   // Channel-tick histogram creators for the reconstructed data products.
   string ztitle = "ADC counts";
@@ -452,9 +455,9 @@ void LbTupler::analyze(const art::Event& event) {
     zmax = fdemax;
     ncontour = 40;
   }
-  ChannelTickHistCreator hcreateReco(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, zmax, ncontour);
-  ChannelTickHistCreator hcreateRecoNeg(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, -zmax, zmax, ncontour);
-  ChannelTickHistCreator hcreateRecoPeak(ptfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, 5*zmax, ncontour);
+  ChannelTickHistCreator hcreateReco(htfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, zmax, ncontour);
+  ChannelTickHistCreator hcreateRecoNeg(htfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, -zmax, zmax, ncontour);
+  ChannelTickHistCreator hcreateRecoPeak(htfs, sevt, ftdcTickMin, ftdcTickMax, ztitle, 0, 5*zmax, ncontour);
 
   // Formatting.
   int wnam = 12 + sevtf.size();                  // Base width for a histogram name.
@@ -551,7 +554,7 @@ void LbTupler::analyze(const art::Event& event) {
                           << " and PDG=" << setw(10) << particle.PdgCode()
                           << endl;
     }
-    // Display the selected track performance objects.
+    // Display the MC particle signal maps.
     int flag = 0;
     if ( fdbg > 2 ) flag = 11;
     if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle signal maps (size = "
@@ -569,13 +572,18 @@ void LbTupler::analyze(const art::Event& event) {
   // Split the MC performance objects by ROP.
   TpcSignalMapVector selectedMcTpcSignalMapsMCbyROP;
   for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMC ) {
-    ptsm->splitByRop(selectedMcTpcSignalMapsMCbyROP);
+    ptsm->splitByRop(selectedMcTpcSignalMapsMCbyROP, true);
+  }
+  if ( fdbg > 0 ) {
+    cout << myname << "Summary of selected MC particle by ROP maps (size = "
+         << selectedMcTpcSignalMapsMCbyROP.size() << "):" << endl;
+    for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) pmctp->print(cout, 0, myname + "  ");
   }
 
   // Split the MD performance objects by ROP.
   TpcSignalMapVector selectedMcTpcSignalMapsMDbyROP;
   for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMD ) {
-    ptsm->splitByRop(selectedMcTpcSignalMapsMDbyROP);
+    ptsm->splitByRop(selectedMcTpcSignalMapsMDbyROP, true);
   }
 
   // MCParticles histograms and tree.
@@ -644,6 +652,7 @@ void LbTupler::analyze(const art::Event& event) {
     }
 
     // Add sim channel info and hits to the sim channel signal maps.
+    // We should but don't include contributions from descendants, e.g. mu->e.
     if ( fDoMcTpcSignalMap ) {
       if ( fdbg > 0 ) cout << myname << "Adding sim channels and hits to SimChannel performance objects (size = "
                           << simChannelHandle->size() << ")" << endl;
@@ -667,7 +676,7 @@ void LbTupler::analyze(const art::Event& event) {
 
       // Split signal maps by ROP.
       for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsSC ) {
-        ptsm->splitByRop(selectedMcTpcSignalMapsSCbyROP);
+        ptsm->splitByRop(selectedMcTpcSignalMapsSCbyROP, true);
       }  
       if ( fdbg > 0 ) {
         cout << myname << "Summary of selected-track SimChannel signal maps (size = "

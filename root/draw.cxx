@@ -22,6 +22,22 @@ int draw(std::string name, int how =0, double xmin =0.0, double xmax =0.0) {
   TObject* pobj = 0;
   gDirectory->GetObject(name.c_str(), pobj);
   if ( pobj == 0 ) {
+    size_t i1 = name.find('h') + 1;
+    size_t i2 = name.find('_');
+    if ( i1 ==1 && i2 != string::npos && i2 > i1) {
+      string sevt = "event" + name.substr(i1, i2-i1);
+      cout << myname << "Trying event directory " << sevt << " for " << name << endl;
+      string savedir = gDirectory->GetPath();
+      if ( gDirectory->cd(sevt.c_str()) ) {
+        gDirectory->GetObject(name.c_str(), pobj);
+      }
+      gDirectory->cd(savedir.c_str());
+    } else {
+      cout << myname << "Name " << name << " is not in expected format: i1="
+           << i1 << ", i2=" << i2 << endl;
+    }
+  }
+  if ( pobj == 0 ) {
     cout << myname << "Object not found: " << name << endl;
     return 1;
   }

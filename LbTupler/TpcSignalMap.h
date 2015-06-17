@@ -17,6 +17,7 @@
 #include "art/Framework/Core/FindManyP.h"
 #include "TpcTypes.h"
 #include "TpcSegment.h"
+#include "GeoHelper.h"
 
 namespace simb {
 class MCParticle;
@@ -28,7 +29,6 @@ namespace recob {
 class Hit;
 }
 class TH2;
-class GeoHelper;
 
 class TpcSignalMap {
 
@@ -67,6 +67,7 @@ public:
   typedef std::shared_ptr<McInfo> McInfoPtr;
   typedef std::map<Tick, double> SignalTickMap;
   typedef std::map<Channel, SignalTickMap> TickChannelMap;
+  typedef std::map<Index, TickChannelMap> TpcTickChannelMap;
   typedef std::vector<Hit> HitVector;
   typedef std::map<Channel, HitVector> HitChannelMap;
   typedef std::vector<Index> IndexVector;
@@ -87,7 +88,7 @@ public:
   virtual ~TpcSignalMap();
 
   // Add a signal (energy deposit or ADC count) in a bin.
-  int addSignal(Channel chan, Tick tick, Signal signal);
+  int addSignal(Channel chan, Tick tick, Signal signal, Index itpc =GeoHelper::badIndex());
 
   // Add contributions from a SimChannel for track tid.
   int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
@@ -120,8 +121,12 @@ public:
   // Getters.
   std::string name() const { return m_name; }
   const GeoHelper* geometryHelper() const { return m_pgh; }
-  const TickChannelMap& tickSignalMap() const;
+  IndexVector tpcs() const;
+  const TickChannelMap& tickSignalMap(Index itpc) const;
   const HitChannelMap& hitSignalMap() const;
+
+  // Return the TPC indices that are common whith ain input list.
+  IndexVector sharedTpcs(const IndexVector& intpcs) const;
 
   // Range of data.
   Channel channelMin() const;
@@ -130,7 +135,7 @@ public:
   Tick tickMax() const;
   TickRange tickRange() const;
 
-  // The number of included channels.
+  // The number of included channels, summing over all TPCs.
   unsigned int channelCount() const;
 
   // The number of included ticks.
@@ -191,19 +196,21 @@ public:
 
   // Split this object along ROP boundaries, i.e. one object for each ROP
   // with signals. The new object are appended to tsms.
-  int splitByRop(TpcSignalMapVector& tsms) const;
+  // If splitByTpc is true, then a separate map is created for each TPC
+  // in each ROP.
+  int splitByRop(TpcSignalMapVector& tsms, bool splitByTpc =false) const;
 
 private:
 
-  std::string m_name;          // Name.
-  const GeoHelper* m_pgh;      // Geometry helper maps channels to ROPs.
-  TickChannelMap m_ticksig;    // m_ticksig[chan][tick] is the signal for (chan, tick)
-  HitChannelMap m_hitsig;      // m_hitsig[chan][hit] is the hit for (chan, hit number)
-  TickRange m_tickRange;       // Range of ticks covered by this signal map.
-  IndexVector m_ropnbin;       // Number of filled channel-tick bins for each ROP
-  McInfoPtr m_pmci;            // Manging pointer to MC info.
-  Index m_rop;                 // ROP for this object (badIndex() if not defined)
-  TpcSegmentVector m_segments; // Attached segments.
+  std::string m_name;             // Name.
+  const GeoHelper* m_pgh;         // Geometry helper maps channels to ROPs.
+  TpcTickChannelMap m_tpcticksig; // m_ticksig[itpc][chan][tick] is the signal for (itpc, chan, tick)
+  HitChannelMap m_hitsig;         // m_hitsig[chan][hit] is the hit for (chan, hit number)
+  TickRange m_tickRange;          // Range of ticks covered by this signal map.
+  IndexVector m_ropnbin;          // Number of filled channel-tick bins for each ROP
+  McInfoPtr m_pmci;               // Managing pointer to MC info.
+  Index m_rop;                    // ROP for this object (badIndex() if not defined)
+  TpcSegmentVector m_segments;    // Attached segments.
 
 };
 

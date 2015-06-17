@@ -13,7 +13,7 @@
 
 class TH2;
 namespace art {
-class TFileService;
+class TFileDirectory;
 }
 
 class ChannelTickHistCreator {
@@ -32,7 +32,7 @@ public:  // methods
   //   zlab = z-axis lable, e.g. "ADC counts" or "Energy [MeV]"
   //   zmin, zmax = z-axis range
   //   ncontour = # contours for contour plotting
-  ChannelTickHistCreator(art::TFileService* ptfs, std::string sevt, int tick1, int tick2,
+  ChannelTickHistCreator(art::TFileDirectory& tfs, std::string sevt, int tick1, int tick2,
                          std::string zlab, double zmin, double zmax, int ncontour);
 
   // Create a histogram for a given channel range.
@@ -48,7 +48,7 @@ public:  // methods
 
 private:  // data
 
-  art::TFileService* m_ptfs;
+  art::TFileDirectory& m_tfs;
   std::string m_sevt;
   TickRange m_tickRange;
   std::string m_zlab;

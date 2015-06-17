@@ -63,17 +63,21 @@ TpcSignalMapComparison(const TpcSignalMap& tsm1, const TpcSignalMap& tsm2)
     m_chend = m_chbegin + pgeohelp->ropNChannel(m_rop);
     m_nchanref = 0;
     m_nchanmat = 0;
-    for ( const auto& chanticksigs1 : m_tsm1.tickSignalMap() ) {
-      Channel ch1 = chanticksigs1.first;
-      if ( ch1 < m_chbegin ) continue;
-      if ( ch1 >= m_chend ) continue;
-      ++m_nchanref;
+    for ( Index itpc : m_tsm1.tpcs() ) {
+      for ( const auto& chanticksigs1 : m_tsm1.tickSignalMap(itpc) ) {
+        Channel ch1 = chanticksigs1.first;
+        if ( ch1 < m_chbegin ) continue;
+        if ( ch1 >= m_chend ) continue;
+        ++m_nchanref;
+      }
     }
-    for ( const auto& chanticksigs2 : m_tsm2.tickSignalMap() ) {
-      Channel ch2 = chanticksigs2.first;
-      if ( ch2 < m_chbegin ) continue;
-      if ( ch2 >= m_chend ) continue;
-      ++m_nchanmat;
+    for ( Index itpc : m_tsm2.tpcs() ) {
+      for ( const auto& chanticksigs2 : m_tsm2.tickSignalMap(itpc) ) {
+        Channel ch2 = chanticksigs2.first;
+        if ( ch2 < m_chbegin ) continue;
+        if ( ch2 >= m_chend ) continue;
+        ++m_nchanmat;
+      }
     }
   }
 }
@@ -88,16 +92,18 @@ double TpcSignalMapComparison::channelFraction() const {
   unsigned int nchanDen = 0;
   if ( dbg() ) cout << myname << "Checking " << referenceChannelCount() << " and "
                     << matchChannelCount() << " channels:" << endl;
-  for ( const auto& ent1 : m_tsm1.tickSignalMap() ) {
-    Channel ch1 = ent1.first;
-    if ( ch1 < m_chbegin ) continue;
-    if ( ch1 >= m_chend ) continue;
-    if ( dbg() ) cout << " " << ch1;
-    const TickChannelMap& tsmap2 = m_tsm2.tickSignalMap();
-    bool match = tsmap2.find(ch1) != tsmap2.end();
-    if ( dbg() ) cout << (match ? "+" : ".");
-    if ( match ) ++nchanNum;
-    ++nchanDen;
+  for ( Index itpc : m_tsm1.sharedTpcs(m_tsm2.tpcs()) ) {
+    for ( const auto& ent1 : m_tsm1.tickSignalMap(itpc) ) {
+      Channel ch1 = ent1.first;
+      if ( ch1 < m_chbegin ) continue;
+      if ( ch1 >= m_chend ) continue;
+      if ( dbg() ) cout << " " << ch1;
+      const TickChannelMap& tsmap2 = m_tsm2.tickSignalMap(itpc);
+      bool match = tsmap2.find(ch1) != tsmap2.end();
+      if ( dbg() ) cout << (match ? "+" : ".");
+      if ( match ) ++nchanNum;
+      ++nchanDen;
+    }
   }
   if ( nchanDen > 0 ) chanfrac = double(nchanNum)/double(nchanDen);
   if ( dbg() ) cout << " chanfrac=" << chanfrac << endl;
@@ -123,34 +129,36 @@ double TpcSignalMapComparison::binFraction() const {
   if ( dbg() ) cout << myname << "Checking " << referenceChannelCount() << " and "
                     << matchChannelCount() << " channels for ROP " << rop() << endl;
   // Loop over channels in the reference.
-  for ( const auto& chanticksigs1 : m_tsm1.tickSignalMap() ) {
-    Channel ch1 = chanticksigs1.first;
-    const SignalTickMap& ticksigs1 = chanticksigs1.second;
-    if ( ch1 < m_chbegin ) continue;
-    if ( ch1 >= m_chend ) continue;
-    if ( dbg() ) cout << myname << setw(6) << ch1;
-    const auto& ichanticksigs2 = m_tsm2.tickSignalMap().find(ch1);
-    const Tick badtick = badTick();
-    Tick ticklast = badtick;
-    // Find the matching channel in the match.
-    const SignalTickMap* pticksigs2 = nullptr;
-    if ( ichanticksigs2 != m_tsm2.tickSignalMap().end() ) {
-      pticksigs2 = &ichanticksigs2->second;
-    }
-    // Loop over ticks in the reference channel.
-    for ( auto ticksig1 : ticksigs1 ) {
-      Tick tick = ticksig1.first;
-      bool match = (pticksigs2 != nullptr) && (pticksigs2->find(tick) != pticksigs2->end());
-      if ( match ) ++nbinNum;
-      ++nbinDen;
-      if ( dbg() ) {
-        if ( ticklast == badtick || tick != ticklast+1 ) cout << " ";
-        cout << (match ? "+" : ".");
+  for ( Index itpc : m_tsm1.sharedTpcs(m_tsm2.tpcs()) ) {
+    for ( const auto& chanticksigs1 : m_tsm1.tickSignalMap(itpc) ) {
+      Channel ch1 = chanticksigs1.first;
+      const SignalTickMap& ticksigs1 = chanticksigs1.second;
+      if ( ch1 < m_chbegin ) continue;
+      if ( ch1 >= m_chend ) continue;
+      if ( dbg() ) cout << myname << setw(6) << ch1;
+      const auto& ichanticksigs2 = m_tsm2.tickSignalMap(itpc).find(ch1);
+      const Tick badtick = badTick();
+      Tick ticklast = badtick;
+      // Find the matching channel in the match.
+      const SignalTickMap* pticksigs2 = nullptr;
+      if ( ichanticksigs2 != m_tsm2.tickSignalMap(itpc).end() ) {
+        pticksigs2 = &ichanticksigs2->second;
       }
-      ticklast = tick;
-    }
-    if ( dbg() ) cout << endl;
-  }
+      // Loop over ticks in the reference channel.
+      for ( auto ticksig1 : ticksigs1 ) {
+        Tick tick = ticksig1.first;
+        bool match = (pticksigs2 != nullptr) && (pticksigs2->find(tick) != pticksigs2->end());
+        if ( match ) ++nbinNum;
+        ++nbinDen;
+        if ( dbg() ) {
+          if ( ticklast == badtick || tick != ticklast+1 ) cout << " ";
+          cout << (match ? "+" : ".");
+        }
+        ticklast = tick;
+      }
+      if ( dbg() ) cout << endl;
+    }  // End loop over channels.
+  }  // End loop over TPCs.
   if ( nbinDen > 0 ) binfrac = double(nbinNum)/double(nbinDen);
   if ( dbg() ) cout << myname << " binfrac=" << binfrac << endl;
   return binfrac;

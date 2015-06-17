@@ -33,6 +33,7 @@ using geo::View_t;
 using geo::kU;
 using geo::kV;
 using geo::kZ;
+using tpc::badIndex;
 
 //************************************************************************
 
@@ -328,6 +329,7 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
     double t = pos.T();
     double e = particle.E(ipt);
     double detot = 1000.0*(e0 - e);
+    unsigned int itpc = badIndex();
     if ( ! tpcid.isValid ) {
       fpttpc[ipt] = -1;
       fptapa[ipt] = -1;
@@ -336,7 +338,7 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
       fptapa[ipt] = -2;
     } else {
       indet = true;
-      unsigned int itpc = tpcid.TPC;
+      itpc = tpcid.TPC;
       unsigned int iapa = geohelp.tpcApa(itpc);
       fpttpc[ipt] = itpc;
       fptapa[ipt] = iapa;
@@ -460,7 +462,7 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
           }
           if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
           if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
-          pmtsm->addSignal(pp.channel, pp.tick, destep);
+          pmtsm->addSignal(pp.channel, pp.tick, destep, itpc);
         }
       }
       // If this and the last point are in the detector, increment the detector path length.

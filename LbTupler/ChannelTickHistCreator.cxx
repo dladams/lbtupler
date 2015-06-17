@@ -2,20 +2,20 @@
 
 #include "ChannelTickHistCreator.h"
 #include <iostream>
-#include "art/Framework/Services/Optional/TFileService.h"
+#include "art/Framework/Services/Optional/TFileDirectory.h"
 #include "TH2.h"
 
 using std::string;
 using std::cout;
 using std::endl;
-using art::TFileService;
+using art::TFileDirectory;
 
 //**********************************************************************
 
 ChannelTickHistCreator::
-ChannelTickHistCreator(TFileService* ptfs, string sevt, int tick1, int tick2, 
+ChannelTickHistCreator(TFileDirectory& tfs, string sevt, int tick1, int tick2, 
                        string zlab, double zmin, double zmax, int ncontour)
-: m_ptfs(ptfs),
+: m_tfs(tfs),
   m_sevt(sevt),
   m_tickRange(tick1, tick2),
   m_zlab(zlab),
@@ -61,19 +61,17 @@ create(string slab, unsigned int chan1, unsigned int chan2, string stitle,
   title += ";TDC tick;Channel;" + m_zlab;
   if ( dbg > 0 ) cout << myname << "Creating hit histo " << hname << " with " << ntick
                       << " TDC bins and " << nchan << " channel bins" << endl;
-  if ( m_ptfs == nullptr ) {
-    if ( dbg > 1 ) cout << myname << "  TFileService not found." << endl;
-    ph = new TH2F(hname.c_str(), title.c_str(),
-                  ntick, tick1, tick2, nchan, chan1, chan2);
+  if ( dbg > 1 ) cout << myname << "  Using TFileService." << endl;
+  ph = m_tfs.make<TH2F>(hname.c_str(), title.c_str(),
+                          ntick, tick1, tick2, nchan, chan1, chan2);
+  if ( ph == nullptr ) {
+    cout << myname << "Unable to create histogram " << hname << endl;
   } else {
-    if ( dbg > 1 ) cout << myname << "  Using TFileService." << endl;
-    ph = m_ptfs->make<TH2F>(hname.c_str(), title.c_str(),
-                            ntick, tick1, tick2, nchan, chan1, chan2);
     if ( dbg > 1 ) cout << myname << "  Created histogram " << ph->GetName() << endl;
+    ph->GetZaxis()->SetRangeUser(m_zmin, m_zmax);
+    ph->SetContour(m_ncontour);
+    ph->SetStats(0);
   }
-  ph->GetZaxis()->SetRangeUser(m_zmin, m_zmax);
-  ph->SetContour(m_ncontour);
-  ph->SetStats(0);
   return ph;
 }
 
