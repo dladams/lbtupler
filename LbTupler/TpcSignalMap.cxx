@@ -7,6 +7,7 @@
 #include "SimulationBase/MCParticle.h"
 #include "Simulation/SimChannel.h"
 #include "RecoBase/Hit.h"
+#include "Geometry/Geometry.h"
 #include "reducedPDG.h"
 
 using std::string;
@@ -126,8 +127,12 @@ int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal, Index itpc) 
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
+int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid, bool usetpc) {
   const string myname = "TpcSignalMap::addSimChannel: ";
+  if ( usetpc && geometryHelper() == nullptr ) {
+    cout << myname << "ERROR: Geometry is required to find the TPC." << endl;
+    return 1;
+  }
   Channel chan = simchan.Channel();
   auto const& tickides = simchan.TDCIDEMap();
   if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
@@ -141,7 +146,24 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
         //Signal sig = ide.numElectrons;
         Signal sig = ide.energy;
         if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
-        addSignal(chan, tick, sig);
+        Index itpc = badIndex();
+        if ( usetpc ) {
+          double pos[3];
+          pos[0] = ide.x;
+          pos[1] = ide.y;
+          pos[2] = ide.z;
+          geo::TPCID tpcid = geometryHelper()->geometry()->FindTPCAtPosition(pos);
+          if ( ! tpcid.isValid ) {
+            std::cout << myname << "WARNING: IDE is not inside a TPC!" << endl;
+            continue;
+          }
+          if ( tpcid.Cryostat != 0 ) {
+            std::cout << myname << "WARNING: IDE is not in cryostat 0!" << endl;
+            continue;
+          }
+          itpc = tpcid.TPC;
+        }
+        addSignal(chan, tick, sig, itpc);
       } else {
         if ( dbg() > 1 ) std::cout << myname << "  Skipping track " << ide.trackID << endl;
       }
@@ -152,9 +174,9 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const sim::SimChannel& sch) {
+int TpcSignalMap::addSimChannel(const sim::SimChannel& sch, bool usetpc) {
   if ( mcinfo() == nullptr ) return -1;
-  return addSimChannel(sch, mcinfo()->trackID);
+  return addSimChannel(sch, mcinfo()->trackID, usetpc);
 }
 
 //**********************************************************************

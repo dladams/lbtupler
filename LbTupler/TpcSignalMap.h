@@ -88,13 +88,15 @@ public:
   virtual ~TpcSignalMap();
 
   // Add a signal (energy deposit or ADC count) in a bin.
+  // If itpc is valid, then the singal is assigned to that tpc.
   int addSignal(Channel chan, Tick tick, Signal signal, Index itpc =GeoHelper::badIndex());
 
   // Add contributions from a SimChannel for track tid.
-  int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
+  int addSimChannel(const sim::SimChannel& sch, unsigned int tid, bool usetpc);
 
-  // Add contributions from a SimChannel taking track ID from the MC info..
-  int addSimChannel(const sim::SimChannel& sch);
+  // Add contributions from a SimChannel taking track ID from the MC info.
+  // If usetpc is true, then the contributions are assigned to a TPC.
+  int addSimChannel(const sim::SimChannel& sch, bool usetpc);
 
   // Add a recob::Hit and its signals.
   int addHit(const recob::Hit& hit, int verbose =0);

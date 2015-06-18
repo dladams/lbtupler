@@ -659,7 +659,7 @@ void LbTupler::analyze(const art::Event& event) {
       for ( auto pmctp : selectedMcTpcSignalMapsSC ) {
         // Add the sim channel info to the selected tracks.
         for ( auto const& simchan : (*simChannelHandle) ) {
-          pmctp->addSimChannel(*&simchan);
+          pmctp->addSimChannel(*&simchan, true);
         }  // End loop over sim channels in the event. 
         pmctp->buildHits();
       }  // End loop over selected SimChannel MC tracks
@@ -680,7 +680,7 @@ void LbTupler::analyze(const art::Event& event) {
       }  
       if ( fdbg > 0 ) {
         cout << myname << "Summary of selected-track SimChannel signal maps (size = "
-             << selectedMcTpcSignalMapsSC.size() << ") after splitting" << endl;
+             << selectedMcTpcSignalMapsSCbyROP.size() << ") after splitting" << endl;
         for ( auto ptsm : selectedMcTpcSignalMapsSCbyROP ) {
           ptsm->print(cout, flag, myname + "  ");
         }  // End loop over signal maps
