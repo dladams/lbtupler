@@ -63,14 +63,16 @@ TpcSignalMap::Hit::Hit(unsigned int atick1, unsigned int atick2, double asignal)
 
 TpcSignalMap::TpcSignalMap()
 : m_pgh(nullptr),
+  m_usetpc(false),
   m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
   m_rop(badIndex()) { }
 
 //**********************************************************************
 
-TpcSignalMap::TpcSignalMap(string name, const GeoHelper* pgh)
+TpcSignalMap::TpcSignalMap(string name, const GeoHelper* pgh, bool ausetpc)
 : m_name(name),
   m_pgh(pgh),
+  m_usetpc(ausetpc),
   m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
   m_rop(badIndex()) {
   if ( m_pgh != nullptr ) {
@@ -80,9 +82,10 @@ TpcSignalMap::TpcSignalMap(string name, const GeoHelper* pgh)
 
 //**********************************************************************
 
-TpcSignalMap::TpcSignalMap(string name, const simb::MCParticle& par, const GeoHelper* pgh)
+TpcSignalMap::TpcSignalMap(string name, const simb::MCParticle& par, const GeoHelper* pgh, bool ausetpc)
 : m_name(name),
   m_pgh(pgh),
+  m_usetpc(ausetpc),
   m_tickRange(std::numeric_limits<Tick>::max(), std::numeric_limits<Tick>::min()),
   m_pmci(new McInfo(par)),
   m_rop(badIndex()) {
@@ -97,11 +100,18 @@ TpcSignalMap::~TpcSignalMap() { }
 
 //**********************************************************************
 
-int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal, Index itpc) {
+int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal, Index itpcin) {
   const string myname = "TpcSignalMap::add: ";
   if ( dbg() ) std::cout << myname
                          << "Channel " << chan << ", tick " << tick
                          << " has signal " << signal << endl;
+  Index itpc = itpcin;
+  if ( usetpc() && itpc == badIndex() ) {
+    cout << myname << "ERROR: Ignoring request to add TPC signal with invalid TPC." << endl;
+    return 1;
+  }
+  // Ignore the TPC if object is not in the usetpc state.
+  if ( ! usetpc() ) itpc = badIndex();
   TickChannelMap& ticksigmap = m_tpcticksig[itpc];
   if ( ticksigmap.find(chan) == ticksigmap.end() ) ticksigmap[chan] = SignalTickMap();
   SignalTickMap& ticksig = ticksigmap[chan];
@@ -127,9 +137,9 @@ int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal, Index itpc) 
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid, bool usetpc) {
+int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
   const string myname = "TpcSignalMap::addSimChannel: ";
-  if ( usetpc && geometryHelper() == nullptr ) {
+  if ( usetpc() && geometryHelper() == nullptr ) {
     cout << myname << "ERROR: Geometry is required to find the TPC." << endl;
     return 1;
   }
@@ -141,13 +151,15 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid, boo
     // Protect against negative ticks.
     if ( tick > 63000 ) continue;
     auto& ides = tickide.second;
+    if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << " with IDE count " << ides.size() << endl;
     for ( auto& ide : ides ) {
+      if ( dbg() > 1 ) std::cout << myname << "    Adding TrackID=" << ide.trackID << endl;
       if ( abs(ide.trackID) == tid ) {
         //Signal sig = ide.numElectrons;
         Signal sig = ide.energy;
-        if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << ", Sig=" << sig << endl;
+        if ( dbg() > 1 ) std::cout << myname << "    Signal=" << sig << endl;
         Index itpc = badIndex();
-        if ( usetpc ) {
+        if ( usetpc() ) {
           double pos[3];
           pos[0] = ide.x;
           pos[1] = ide.y;
@@ -174,9 +186,9 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid, boo
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const sim::SimChannel& sch, bool usetpc) {
+int TpcSignalMap::addSimChannel(const sim::SimChannel& sch) {
   if ( mcinfo() == nullptr ) return -1;
-  return addSimChannel(sch, mcinfo()->trackID, usetpc);
+  return addSimChannel(sch, mcinfo()->trackID);
 }
 
 //**********************************************************************
@@ -194,7 +206,9 @@ int TpcSignalMap::addHit(const recob::Hit& rhit, int dbg) {
                       << " +/- " << sigma
                       << " signal=" << sig
                       << endl;
-  HitVector& hits = m_hitsig[chan];
+  Index itpc = badIndex();
+  HitChannelMap& hitsigmap = m_tpchitsig[itpc];
+  HitVector& hits = hitsigmap[chan];
   hits.emplace(hits.end(), tick1, tick2, sig);
   // Find the signal fraction in each tick bin and add it to the signal map.
   double sigsum = 0.0;
@@ -296,6 +310,7 @@ int TpcSignalMap::buildHits() {
   const string myname = "TpcSignalMap::buildHits: ";
   // Loop over TPCs.
   for ( auto itpcticksig : m_tpcticksig ) {
+    Index itpc = itpcticksig.first;
     const TickChannelMap& ticksig = itpcticksig.second;
     // Loop over channels.
     for ( const auto ent : ticksig ) {
@@ -305,9 +320,10 @@ int TpcSignalMap::buildHits() {
       Signal hitsig = 0.0;
       Tick tick1 = badTick();
       Tick tick2 = badTick();
-      HitVector& hits = m_hitsig[chan];
+      HitChannelMap& hitsigmap = m_tpchitsig[itpc];
+      HitVector& hits = hitsigmap[chan];
       if ( hits.size() ) {
-        cout << myname << "ERROR: Channel hits already defined." << endl;
+        cout << myname << "ERROR: Channel hits already defined. Size = " << hits.size() << endl;
         return 1;
       }
       for ( auto ticksig : ticks ) {
@@ -356,8 +372,13 @@ TpcSignalMap::tickSignalMap(Index itpc) const {
 
 //**********************************************************************
 
-const TpcSignalMap::HitChannelMap& TpcSignalMap::hitSignalMap() const {
-  return m_hitsig;
+const TpcSignalMap::HitChannelMap& TpcSignalMap::hitSignalMap(Index itpc) const {
+  TpcHitChannelMap::const_iterator ithcm = m_tpchitsig.find(itpc);
+  if ( ithcm == m_tpchitsig.end() ) {
+    static HitChannelMap empty;
+    return empty;
+  }
+  return ithcm->second;
 }
 
 //**********************************************************************
@@ -395,6 +416,25 @@ bool TpcSignalMap::haveRop() const {
 
 Index TpcSignalMap::rop() const {
   return m_rop;
+}
+
+//**********************************************************************
+
+int TpcSignalMap::check() const {
+  bool havebadtpc_sig = m_tpcticksig.find(badIndex()) != m_tpcticksig.end();
+  bool havebadtpc_hit = m_tpchitsig.find(badIndex()) != m_tpchitsig.end();
+  unsigned int ntpc_sig = m_tpcticksig.size();
+  if ( havebadtpc_sig ) --ntpc_sig;
+  unsigned int ntpc_hit = m_tpchitsig.size();
+  if ( havebadtpc_hit ) --ntpc_hit;
+  if ( usetpc() ) {
+    if ( havebadtpc_sig ) return 1;
+    if ( havebadtpc_hit ) return 2;
+  } else {
+    if ( ntpc_sig ) return 3;
+    if ( ntpc_hit ) return 4;
+  }
+  return 0;
 }
 
 //**********************************************************************
@@ -506,35 +546,39 @@ unsigned int TpcSignalMap::ropCount() const {
 //**********************************************************************
 
 unsigned int TpcSignalMap::hitCount() const {
-  unsigned int nbin = 0;
-  for ( const auto& echan : hitSignalMap() ) {
-    nbin += echan.second.size();
+  unsigned int count = 0;
+  for ( TpcHitChannelMap::value_type tpchitvecs : m_tpchitsig ) {
+    for ( HitChannelMap::value_type chahitvec : tpchitvecs.second ) {
+      const HitVector& hitvec = chahitvec.second;
+      count += hitvec.size();
+    }
   }
-  return nbin;
+  return count;
 }
 
 //**********************************************************************
 
 Signal TpcSignalMap::tickSignal() const {
-  Signal sig = 0.0;
-  for ( auto tpcticksig : m_tpcticksig ) {
-    TickChannelMap& ticksigmap = tpcticksig.second;
-    for ( const auto& echan : ticksigmap ) {
-      for ( const auto& etick : echan.second ) {
-        sig += etick.second;
+  Signal sigtot = 0.0;
+  for ( TpcTickChannelMap::value_type tpctickmap : m_tpcticksig ) {
+    for ( TickChannelMap::value_type chticksigmap : tpctickmap.second ) {
+      for ( SignalTickMap::value_type ticksig : chticksigmap.second ) {
+        sigtot += ticksig.second;
       }
     }
   }
-  return sig;
+  return sigtot;
 }
 
 //**********************************************************************
 
 Signal TpcSignalMap::hitSignal() const {
   Signal sig = 0.0;
-  for ( const auto& echan : hitSignalMap() ) {
-    for ( const auto& ehit : echan.second ) {
-      sig += ehit.signal;
+  for ( TpcHitChannelMap::value_type tpchitvecs : m_tpchitsig ) {
+    for ( HitChannelMap::value_type chahitvec : tpchitvecs.second ) {
+      for ( const Hit& hit : chahitvec.second ) {
+        sig += hit.signal;
+      }
     }
   }
   return sig;
@@ -586,6 +630,11 @@ int TpcSignalMap::fillRopChannelTickHist(TH2* ph, Index irop) const {
 //**********************************************************************
 
 ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, string prefix) const {
+  const string myname = "TpcSignalMap::print: ";
+  if ( int cstat = check() ) {
+    out << myname << "ERROR: Object " << name() << " is invalid. Error " << cstat << "." << endl;
+    return out;
+  }
   int detail2 = fulldetail/10;
   int detail1 = fulldetail - detail2*10;
   // Line for each channel displaying the time range(s) and signal
@@ -600,18 +649,15 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
       out << " with ROP " << setw(2) << rop();
     }
     IndexVector mytpcs = tpcs();
-    unsigned int ntpc = mytpcs.size();
-    bool havebad = std::find(mytpcs.begin(), mytpcs.end(), badIndex()) != mytpcs.end();
-    if ( havebad ) --ntpc;
-    out << " for ";
-    if ( ntpc || havebad ) {
-      out << ntpc;
-      if ( havebad ) out << "+";
+    if ( usetpc() ) {
+      unsigned int ntpc = mytpcs.size();
+      out << setw(3) << ntpc;
+      out << " TPC";
+      if ( ntpc != 1 ) out << "s";
+      else out << " ";
     } else {
-      out << "no";
+      out << " no TPCs";
     }
-    out << " TPC";
-    if ( ntpc != 1 ) out << ntpc << "s";
     out << " and has " << setw(4) << channelCount() << " channels with "
         << setw(6) << hitCount() << " hits and " << setw(5) << tickCount() << " ticks"
         << " and " << setw(2) << segments().size() << " segments." << endl;
@@ -664,19 +710,21 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   // Line for each hit displaying the time range(s) and signal
   } else if ( detail1 == 2 ) {
     out << prefix << "TpcSignalMap map has " << hitCount() << " hits:" << endl;
-    if ( hitSignalMap().size() == 0 ) {
+    if ( m_tpchitsig.size() == 0 ) {
       out << prefix << "  Hit signal map is empty." << endl;
     }
     // Loop over channels.
-    for ( const auto& echan : hitSignalMap() ) {
-      Channel chan = echan.first;
-      // Loop over hits in the channel.
-      for ( const auto& ehit : echan.second ) {
-        out << prefix << "  " << setw(5) << chan << ": " << ehit.ticks.first();
-        if ( ehit.ticks.last() > ehit.ticks.first() ) out << ":" << ehit.ticks.last();
-        out << ", ADC = " << ehit.signal << " MeV" << endl;
-      }  // End loop over hits.
-    }  // End loop over channels.
+    for ( TpcHitChannelMap::value_type tpchits : m_tpchitsig ) {
+      for ( const auto& echan : tpchits.second ) {
+        Channel chan = echan.first;
+        // Loop over hits in the channel.
+        for ( const auto& ehit : echan.second ) {
+          out << prefix << "  " << setw(5) << chan << ": " << ehit.ticks.first();
+          if ( ehit.ticks.last() > ehit.ticks.first() ) out << ":" << ehit.ticks.last();
+          out << ", ADC = " << ehit.signal << " MeV" << endl;
+        }  // End loop over hits.
+      }  // End loop over channels.
+    }  // End loop over TPCs.
   // Line for each channel displaying the time range(s) and signal
   } else if ( detail1 == 3 ) {
     out << prefix << "TpcSignalMap map has " << tickCount() << " ticks:" << endl;
@@ -719,12 +767,16 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
 int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
   const string myname = "TpcSignalMap::splitByRop: ";
   if ( geometryHelper() == nullptr ) {
-    cout << myname << "Geometry helper not found. " << endl;
+    cout << myname << "ERROR: Geometry helper not found. " << endl;
     return 1;
   }
   if ( haveRop() ) {
-    cout << myname << "ROP is already assigned." << endl;
+    cout << myname << "ERROR: ROP is already assigned." << endl;
     return 2;
+  }
+  if ( int cstat = check() ) {
+    cout << myname << "ERROR: Object " << name() << " is in invalid state " << cstat << "." << endl;
+    return 3;
   }
   const GeoHelper& geohelp = *geometryHelper();
   // Loop over ROPs in the detector.
@@ -750,31 +802,33 @@ int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
           }
         }
       }
-      // Find teh signals for the ROP and TPC.
+      // Find the signals for the ROP and TPC.
       auto itts = m_tpcticksig.find(itpc);
       if ( itts == m_tpcticksig.end() ) continue;
       const TickChannelMap& ticksig = itts->second;
+      auto ithv = m_tpchitsig.find(itpc);
+      if ( ithv == m_tpchitsig.end() ) continue;
+      const HitChannelMap& hitmap = ithv->second;
       Index ch1 = geohelp.ropFirstChannel(irop);
       Index ch2 = ch1 + geohelp.ropNChannel(irop);
       if ( dbg() ) cout << myname << "Creating map for ROP " << irop << endl;
-      TpcSignalMapPtr psm(new TpcSignalMap);
+      TpcSignalMapPtr psm(new TpcSignalMap("tmp", m_pgh, true));
       for ( Channel ich=ch1; ich<ch2; ++ich ) {
         TickChannelMap::const_iterator its = ticksig.find(ich);
-        HitChannelMap::const_iterator ihs = m_hitsig.find(ich);
+        HitChannelMap::const_iterator ihs = hitmap.find(ich);
         if ( its != ticksig.end() ) {
           for ( auto ticksig : its->second ) {
-            psm->addSignal(ich, ticksig.first, ticksig.second);
+            psm->addSignal(ich, ticksig.first, ticksig.second, itpc);
           }
         }
-        if ( ihs != m_hitsig.end() ) psm->m_hitsig[ich] = ihs->second;
+        if ( ihs != hitmap.end() ) psm->m_tpchitsig[itpc][ich] = ihs->second;
       }
       if ( dbg() ) cout << myname << "  ROP " << irop << " has "
                         << psm->tickCount() << " ticks and "
                         << psm->hitCount() << " hits." << endl;
-      if ( psm->tickCount() || psm->m_hitsig.size() ) {
+      if ( psm->tickCount() || psm->m_tpchitsig.size() ) {
         if ( dbg() ) cout << myname << "  Creating new map." << endl;
         psm->m_name = m_name + geohelp.ropName(irop) + namesuf;
-        psm->m_pgh = m_pgh;
         psm->m_pmci = m_pmci;
         psm->m_rop = irop;
         // Find segments that use this ROP.
@@ -790,8 +844,8 @@ int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
                           << " of " << m_segments.size() << endl;
         tsms.push_back(psm);
       }
-    }  // End loop over channel ranges.
-  }
+    }  // End loop over TPCs
+  }  // End loop over ROPs
   return 0;
 }
 

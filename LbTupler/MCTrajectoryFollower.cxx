@@ -463,8 +463,8 @@ addMCParticle(const MCParticle& particle, TpcSignalMap* pmtsm, bool useDescendan
           if ( pp.tick < fdettickmin ) fdettickmin = pp.tick;
           if ( pp.tick > fdettickmax ) fdettickmax = pp.tick;
           pmtsm->addSignal(pp.channel, pp.tick, destep, itpc);
-        }
-      }
+        }  // End loop over planes in the TPC
+      }  // End loop over sub-steps.
       // If this and the last point are in the detector, increment the detector path length.
       if ( indet0 && indet ) fdetlen += ds;
     }

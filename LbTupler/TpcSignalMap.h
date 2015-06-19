@@ -70,6 +70,7 @@ public:
   typedef std::map<Index, TickChannelMap> TpcTickChannelMap;
   typedef std::vector<Hit> HitVector;
   typedef std::map<Channel, HitVector> HitChannelMap;
+  typedef std::map<Index, HitChannelMap> TpcHitChannelMap;
   typedef std::vector<Index> IndexVector;
 
   // Default ctor.
@@ -78,25 +79,25 @@ public:
   // Ctor from name and geometry helper.
   // If this is used, then each channel (and thus each signal and hit)
   // is assigned to a ROP (APA readout plane).
-  TpcSignalMap(Name name, const GeoHelper* pgh);
+  TpcSignalMap(Name name, const GeoHelper* pgh, bool ausetpc =false);
 
   // Ctor adding an MC particle.
-  TpcSignalMap(std::string name, const simb::MCParticle& par, const GeoHelper* pgh =nullptr);
+  TpcSignalMap(std::string name, const simb::MCParticle& par, const GeoHelper* pgh =nullptr, bool ausetpc =false);
 
   // Copy keeping only the signals for a given range of channels.
   // Dtor.
   virtual ~TpcSignalMap();
 
   // Add a signal (energy deposit or ADC count) in a bin.
-  // If itpc is valid, then the singal is assigned to that tpc.
+  // If itpc is valid, then the signal is assigned to that TPC if object is in the usetpc state.
+  // Returns error (nonzero) if in usetpc state and itpc is not valid.
   int addSignal(Channel chan, Tick tick, Signal signal, Index itpc =GeoHelper::badIndex());
 
   // Add contributions from a SimChannel for track tid.
-  int addSimChannel(const sim::SimChannel& sch, unsigned int tid, bool usetpc);
+  int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
 
   // Add contributions from a SimChannel taking track ID from the MC info.
-  // If usetpc is true, then the contributions are assigned to a TPC.
-  int addSimChannel(const sim::SimChannel& sch, bool usetpc);
+  int addSimChannel(const sim::SimChannel& sch);
 
   // Add a recob::Hit and its signals.
   int addHit(const recob::Hit& hit, int verbose =0);
@@ -123,9 +124,16 @@ public:
   // Getters.
   std::string name() const { return m_name; }
   const GeoHelper* geometryHelper() const { return m_pgh; }
+  bool usetpc() const { return m_usetpc; }
   IndexVector tpcs() const;
   const TickChannelMap& tickSignalMap(Index itpc) const;
-  const HitChannelMap& hitSignalMap() const;
+  const HitChannelMap& hitSignalMap(Index itpc) const;
+
+  // Check the status of this object.
+  // Returns zero if all is OK.
+  // Return nonzero for inconsistenticies e.g. between signal and hit maps
+  // and the use tpc state.
+  int check() const;
 
   // Return the TPC indices that are common whith ain input list.
   IndexVector sharedTpcs(const IndexVector& intpcs) const;
@@ -206,8 +214,9 @@ private:
 
   std::string m_name;             // Name.
   const GeoHelper* m_pgh;         // Geometry helper maps channels to ROPs.
+  bool m_usetpc;                  // Are signals and hits indesced by TPC?
   TpcTickChannelMap m_tpcticksig; // m_ticksig[itpc][chan][tick] is the signal for (itpc, chan, tick)
-  HitChannelMap m_hitsig;         // m_hitsig[chan][hit] is the hit for (chan, hit number)
+  TpcHitChannelMap m_tpchitsig;   // m_tpchitsig[chan][hit] is the hit for (chan, hit number)
   TickRange m_tickRange;          // Range of ticks covered by this signal map.
   IndexVector m_ropnbin;          // Number of filled channel-tick bins for each ROP
   McInfoPtr m_pmci;               // Managing pointer to MC info.

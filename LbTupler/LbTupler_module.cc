@@ -522,7 +522,8 @@ void LbTupler::analyze(const art::Event& event) {
         if ( trackid < 100 ) ssnam << 0;
         if ( trackid < 10 ) ssnam << 0;
         ssnam << trackid;
-        TpcSignalMapPtr pmctpmc(new TpcSignalMap(ssnam.str(), *&particle, fgeohelp));
+        bool usetpc = true;
+        TpcSignalMapPtr pmctpmc(new TpcSignalMap(ssnam.str(), *&particle, fgeohelp, usetpc));
         // Fill the MC performance information including signal map.
         // This also selects particles.
         int keepstat = m_pmctrajmc->addMCParticle(particle, pmctpmc.get(), false);
@@ -530,12 +531,12 @@ void LbTupler::analyze(const art::Event& event) {
         if ( keepstat == 0 ) {
           string snam = ssnam.str();
           snam[2] = 'd';  // Use "mcd" instead of "mcp" for map with descendants
-          TpcSignalMapPtr pmctpmd(new TpcSignalMap(snam, *&particle, fgeohelp));
+          TpcSignalMapPtr pmctpmd(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
           m_pmctrajmd->addMCParticle(particle, pmctpmd.get(), true);
           pmctpmc->buildHits();
           pmctpmd->buildHits();
           snam[2] = 's';  // Use "mcs" instead of "mcp" for SimHits.
-          TpcSignalMapPtr pmctpsc(new TpcSignalMap(snam, *&particle, fgeohelp));
+          TpcSignalMapPtr pmctpsc(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
           // Add selected track to the signal map lists.
           selectedMcTpcSignalMapsMC.push_back(pmctpmc);
           selectedMcTpcSignalMapsMD.push_back(pmctpmd);
@@ -569,7 +570,7 @@ void LbTupler::analyze(const art::Event& event) {
     }  // End loop over selected MC tracks
   }  // end DoMcTpcSignalMap
 
-  // Split the MC performance objects by ROP.
+  // Split the MC signal maps by ROP.
   TpcSignalMapVector selectedMcTpcSignalMapsMCbyROP;
   for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMC ) {
     ptsm->splitByRop(selectedMcTpcSignalMapsMCbyROP, true);
@@ -580,10 +581,15 @@ void LbTupler::analyze(const art::Event& event) {
     for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) pmctp->print(cout, 0, myname + "  ");
   }
 
-  // Split the MD performance objects by ROP.
+  // Split the MD signal maps by ROP.
   TpcSignalMapVector selectedMcTpcSignalMapsMDbyROP;
   for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMD ) {
     ptsm->splitByRop(selectedMcTpcSignalMapsMDbyROP, true);
+  }
+  if ( fdbg > 0 ) {
+    cout << myname << "Summary of selected MD particle by ROP maps (size = "
+         << selectedMcTpcSignalMapsMDbyROP.size() << "):" << endl;
+    for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) pmctp->print(cout, 0, myname + "  ");
   }
 
   // MCParticles histograms and tree.
@@ -659,7 +665,7 @@ void LbTupler::analyze(const art::Event& event) {
       for ( auto pmctp : selectedMcTpcSignalMapsSC ) {
         // Add the sim channel info to the selected tracks.
         for ( auto const& simchan : (*simChannelHandle) ) {
-          pmctp->addSimChannel(*&simchan, true);
+          pmctp->addSimChannel(*&simchan);
         }  // End loop over sim channels in the event. 
         pmctp->buildHits();
       }  // End loop over selected SimChannel MC tracks
