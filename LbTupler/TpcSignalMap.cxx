@@ -22,12 +22,13 @@ using tpc::badIndex;
 using tpc::badChannel;
 using tpc::badTick;
 
-typedef TpcSignalMap::Tick         Tick;
-typedef TpcSignalMap::TickRange    TickRange;
-typedef TpcSignalMap::Channel      Channel;
-typedef TpcSignalMap::Signal       Signal;
-typedef TpcSignalMap::Index        Index;
-typedef TpcSignalMap::IndexVector  IndexVector;
+typedef TpcSignalMap::Tick             Tick;
+typedef TpcSignalMap::TickRange        TickRange;
+typedef TpcSignalMap::Channel          Channel;
+typedef TpcSignalMap::Signal           Signal;
+typedef TpcSignalMap::Index            Index;
+typedef TpcSignalMap::IndexVector      IndexVector;
+typedef TpcSignalMap::IndexPairVector  IndexPairVector;
 
 //**********************************************************************
 // Local definitions.
@@ -207,6 +208,10 @@ int TpcSignalMap::addHit(const recob::Hit& rhit, int dbg) {
                       << " signal=" << sig
                       << endl;
   Index itpc = badIndex();
+  if ( usetpc() ) {
+    cout << myname << "ERROR: Unable to extract TPC from hit." << endl;
+    abort();
+  }
   HitChannelMap& hitsigmap = m_tpchitsig[itpc];
   HitVector& hits = hitsigmap[chan];
   hits.emplace(hits.end(), tick1, tick2, sig);
@@ -445,6 +450,22 @@ IndexVector TpcSignalMap::sharedTpcs(const IndexVector& intpcs) const {
   for ( Index itpc : intpcs ) {
     if ( find(mytpcs.begin(), mytpcs.end(), itpc) != mytpcs.end() ) {
       out.push_back(itpc);
+    }
+  }
+  return out;
+}
+
+//**********************************************************************
+
+IndexPairVector TpcSignalMap::
+sharedTpcPairs(const IndexVector& intpcs, bool same) const {
+  IndexPairVector out;
+  IndexVector mytpcs = tpcs();
+  for ( Index itpc : mytpcs ) {
+    for ( Index jtpc : intpcs ) {
+      bool match = (itpc == jtpc) ||
+                   ( !same && (itpc == badIndex() || jtpc == badIndex()) );
+      if ( match ) out.push_back(IndexPair(itpc,jtpc));
     }
   }
   return out;

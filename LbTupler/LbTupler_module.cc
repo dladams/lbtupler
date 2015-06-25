@@ -950,7 +950,7 @@ void LbTupler::analyze(const art::Event& event) {
       abort();
     }
 
-    // Create performance object for all clusters and for each individual cluster.
+    // Create signal maps for all clusters and for each individual cluster.
     TpcSignalMap allClusterSignalMap("allclusters", &geohelp);
     TpcSignalMapVector clusterSignalMap;
     for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
@@ -991,26 +991,6 @@ void LbTupler::analyze(const art::Event& event) {
                                    "Cluster hits for " + geohelp.ropName(irop));
       allClusterSignalMap.fillRopChannelTickHist(ph,irop);
       if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
-    }
-
-    // Create the channel-tick histograms for each cluster.
-    if ( fdbg > 1 ) cout << myname << "Summary of per-cluster hit histograms:" << endl;
-    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-      ostringstream ssclu;
-      ssclu << iclu;
-      string sclu = ssclu.str();
-      TpcSignalMapPtr pch = clusterSignalMap[iclu];
-      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        if ( pch->ropNbin(irop) == 0 ) {
-          if ( fdbg > 2 ) cout << myname << "  Skipping " << irop << endl;
-          continue;
-        }
-        TH2* ph = hcreateReco.create("clu" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                     "Cluster hits for " + geohelp.ropName(irop),
-                                     "clu" + sclu, "cluster " + sclu, pch->tickRange());
-        pch->fillRopChannelTickHist(ph,irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
-      }
     }
 
     // Create the channel-tick histograms for each cluster.

@@ -72,6 +72,8 @@ public:
   typedef std::map<Channel, HitVector> HitChannelMap;
   typedef std::map<Index, HitChannelMap> TpcHitChannelMap;
   typedef std::vector<Index> IndexVector;
+  typedef std::pair<Index,Index> IndexPair;
+  typedef std::vector<IndexPair> IndexPairVector;
 
   // Default ctor.
   TpcSignalMap();
@@ -135,8 +137,13 @@ public:
   // and the use tpc state.
   int check() const;
 
-  // Return the TPC indices that are common whith ain input list.
+  // Return the TPC indices that are common with an input list.
   IndexVector sharedTpcs(const IndexVector& intpcs) const;
+
+  // Return the TPC indices that match those in the input list.
+  // If same = true, they must have the same value.
+  // Otherwise it is also a match if either is bad (badIndex()).
+  IndexPairVector sharedTpcPairs(const IndexVector& intpcs, bool same =false) const;
 
   // Range of data.
   Channel channelMin() const;

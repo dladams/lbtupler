@@ -98,12 +98,12 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
     double dmin = maxDistance();
     Index imin = m_c2.size();
     Index irop = ropMatch ? p1->rop() : 0;
-    if ( dbg > 1 ) cout << myname << "  Match vector size is " << indicesByRop[irop].size() << endl;
+    if ( dbg > 1 ) cout << myname << "  Match vector size for ROP " << irop << " is "
+                        << indicesByRop[irop].size() << endl;
     for ( Index i2 : indicesByRop[irop] ) {
       P2 p2 = m_c2[i2];
-      if ( dbg > 1 ) cout << myname << "    Matching candidate " << i2 << endl;
       double dis = distance()(*p1, *p2);
-      if ( dbg > 1 ) cout << myname << "    Matching distance = " << dis << endl;
+      if ( dbg > 1 ) cout << myname << "    Matching candidate " << i2 << " has distance " << dis << endl;
       if ( dis < dmin ) {
         imin = i2;
         dmin = dis;
