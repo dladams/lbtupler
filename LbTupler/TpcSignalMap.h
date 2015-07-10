@@ -96,9 +96,21 @@ public:
   int addSignal(Channel chan, Tick tick, Signal signal, Index itpc =GeoHelper::badIndex());
 
   // Add contributions from a SimChannel for track tid.
-  int addSimChannel(const sim::SimChannel& sch, unsigned int tid);
+  // Set tid = -1 to include all tracks.
+  // If useUntrackedDescendants is true, then untracked descendants are included for each track.
+  // Those have the negative of the track ID.
+  int addSimChannel(const sim::SimChannel& sch, int tid, bool useUntrackedDescendants =true);
 
-  // Add contributions from a SimChannel taking track ID from the MC info.
+  // Add contributions from a SimChannel for the track IDs in tids.
+  // E.g., tids might include a particle and all its descendants.
+  // If tids is empty, all contributions are included.
+  // If useUntrackedDescendants is true, then untracked descendants are included for each track.
+  // Those have the negative of the track ID.
+  int addSimChannel(const sim::SimChannel& sch, const IndexVector& tids, bool useUntrackedDescendants =true);
+
+  // Add contributions from a SimChannel for track ID taken from the MC info.
+  // Untracked descendants are included.
+  // If this object does not have a track ID, then all contributions are included.
   int addSimChannel(const sim::SimChannel& sch);
 
   // Add a recob::Hit and its signals.

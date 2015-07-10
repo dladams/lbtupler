@@ -63,7 +63,10 @@ int draw(std::string name, int how =0, double xmin =0.0, double xmax =0.0) {
   double paltoff = 1.00;
   double axyoff = 1.0;
   double toff = 1.00;
-  if ( how == 1 ) {
+  if ( how == 0 ) {
+    // Standard canvas.
+    pcan = new TCanvas;
+  } else if ( how == 1 ) {
     // Extra-wide canvas.
     pcan = new TCanvas(cname.c_str(), cname.c_str(), 1600, 500);
     pcan->SetLeftMargin(xh1);
@@ -72,9 +75,6 @@ int draw(std::string name, int how =0, double xmin =0.0, double xmax =0.0) {
     palx2 = xh2 + 0.015;
     paltoff = 0.50;
     axyoff = 0.50;
-  } else if ( how == 2 ) {
-    // Standard canvas.
-    pcan = new TCanvas;
   }
   // Set palette parameters. First draw to make sure palette is present.
   ph2->Draw("colz");

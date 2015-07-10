@@ -84,10 +84,14 @@ using geo::View_t;
 using geo::kU;
 using geo::kV;
 using geo::kZ;
+using simb::MCParticle;
+using tpc::IndexVector;
 
 typedef shared_ptr<TpcSignalMap> TpcSignalMapPtr;
 typedef vector<TpcSignalMapPtr> TpcSignalMapVector;
 typedef TpcSignalMap::Index Index;
+typedef map<int, const MCParticle*> ParticleMap;
+typedef map<Index, IndexVector> IndexVectorMap;
 
 namespace LbTupler {
 
@@ -486,7 +490,7 @@ void LbTupler::analyze(const art::Event& event) {
   //************************************************************************
 
   // Get all the MC particles for the event.
-  art::Handle< vector<simb::MCParticle> > particleHandle;
+  art::Handle< vector<MCParticle> > particleHandle;
   if ( fDoMCParticles || fDoMcTpcSignalMap ) {
     event.getByLabel(fParticleProducerLabel, particleHandle);
     if ( fdbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
@@ -503,19 +507,50 @@ void LbTupler::analyze(const art::Event& event) {
   }
 
   // Create vector of selected MC particles for analysis.
-  // Note that descendants typically adds nothing. The descendants are not save for showers.
+  // Note that descendants typically adds nothing. The descendants are not saved for showers.
+  // Use the SimChannel map to see showers.
   TpcSignalMapVector selectedMcTpcSignalMapsMC;    // Filled with MCParticle hits.
   TpcSignalMapVector selectedMcTpcSignalMapsMD;    // Filled with MCParticle and descendant hits.
   TpcSignalMapVector selectedMcTpcSignalMapsSC;    // Filled with SimChannel.
+  ParticleMap pars;   // Particle map indexed by trackid so we can find ancestors.
+  IndexVectorMap descendants;   // Particle descendant vector indexed by trackid.
   if ( fDoMcTpcSignalMap ) {
     if ( fdbg > 1 ) cout << myname << "Selecting MC particles." << endl;
     for ( auto const& particle : (*particleHandle) ) {
       int trackid = particle.TrackId();
+      pars[trackid] = &particle;
       int rpdg = reducedPDG(particle.PdgCode());
       int proc = intProcess(particle.Process());
       // Select particles.
       // 21apr2015: Keep also gammas
-      if ( proc == 0 && rpdg < 7 ) {
+      // 08jul2015: Keep also gamma from initial state pi0
+      // 089ul2015: Keep all with PROC=0 except pi0
+      bool pi0gamma = false;  // True iff this is a pi0 from an initial-state pi0
+      if ( rpdg == 6 && proc == 1 ) {
+        int itrkmom = particle.Mother();
+        ParticleMap::const_iterator iparmom = pars.find(itrkmom);
+        if ( iparmom != pars.end() ) {
+          const MCParticle& parmom = *iparmom->second;
+          int procmom = intProcess(parmom.Process());
+          int pdgmom = parmom.PdgCode();
+          pi0gamma = pdgmom == 111 && procmom == 0;
+          if ( fdbg > 2 ) {
+            cout << myname << "Checked pi0 gamma: parent " << itrkmom << " has proc=" << proc
+                 << " and pdg=" << pdgmom << " ==> select=" << pi0gamma << endl;
+          }
+        } else {
+          cout << myname << "WARNING: Parent missing in particle map." << endl;
+        }
+      }
+      // Select initial-state particles.
+      bool select = proc == 0;
+      // Except, use decay gammas for pi0.
+      bool useGammaNotPi0 = true;
+      if ( useGammaNotPi0 ) {
+        if ( rpdg == 9 ) select = false;
+        else select |= pi0gamma;
+      }
+      if ( select ) {
         // Add selected track to the MCParticle performance list.
         ostringstream ssnam;
         ssnam << "mcp";
@@ -532,7 +567,7 @@ void LbTupler::analyze(const art::Event& event) {
           string snam = ssnam.str();
           snam[2] = 'd';  // Use "mcd" instead of "mcp" for map with descendants
           TpcSignalMapPtr pmctpmd(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
-          m_pmctrajmd->addMCParticle(particle, pmctpmd.get(), true);
+          m_pmctrajmd->addMCParticle(particle, pmctpmd.get(), true, &descendants[trackid]);
           pmctpmc->buildHits();
           pmctpmd->buildHits();
           snam[2] = 's';  // Use "mcs" instead of "mcp" for SimHits.
@@ -549,11 +584,26 @@ void LbTupler::analyze(const art::Event& event) {
       } else {
         if ( fdbg > 1 ) cout << myname << "  Rejected";
       }
-      if ( fdbg > 1 ) cout << " MC particle " << setw(6) << trackid 
-                          << " with RPDG=" << setw(2) << rpdg
-                          << " and PROC=" << setw(2) << proc
-                          << " and PDG=" << setw(10) << particle.PdgCode()
-                          << endl;
+      if ( fdbg > 1 ) {
+        cout << " MC particle " << setw(6) << trackid  << " with"
+             << " PDG=" << setw(10) << particle.PdgCode()
+             << " RPDG=" << setw(2) << rpdg
+             << " Status=" << setw(2) << particle.StatusCode()
+             << " PROC=" << setw(2) << proc
+             << " parent=" << setw(3) << particle.Mother()
+             << " nchild=" << setw(3) << particle.NumberDaughters()
+             << " at (" << setw(3) << int(particle.Vx())
+             <<    ", " << setw(3) << int(particle.Vy())
+             <<    ", " << setw(3) << int(particle.Vz()) << ") cm";
+        double efac = 1000.0;
+        if ( abs(rpdg)==3 || rpdg==7 || rpdg==11 ) {
+          cout << " Ekin=" << setw(5) << int(efac*(particle.E() - particle.Mass()));
+        } else {
+          cout << " Etot=" << setw(5) << int(efac*particle.E());
+        }
+        cout << " MeV";
+        cout << endl;
+      }
     }
     // Display the MC particle signal maps.
     int flag = 0;
@@ -620,8 +670,10 @@ void LbTupler::analyze(const art::Event& event) {
       TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
                                       "MC particle signals for " + geohelp.ropName(irop),
                                       "", "particle " + smcp, pmctp->tickRange());
-      pmctp->fillRopChannelTickHist(ph, irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+      if ( ph != nullptr ) {
+        pmctp->fillRopChannelTickHist(ph, irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+      }
     }
     for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) {
       ostringstream ssmcd;
@@ -629,10 +681,12 @@ void LbTupler::analyze(const art::Event& event) {
       string smcd = ssmcd.str();
       Index irop = pmctp->rop();
       TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
-                                      "MD particle signals for " + geohelp.ropName(irop),
-                                      "", "particle " + smcd, pmctp->tickRange());
-      pmctp->fillRopChannelTickHist(ph, irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+                                  "MD particle signals for " + geohelp.ropName(irop),
+                                  "", "particle " + smcd, pmctp->tickRange());
+      if ( ph != nullptr ) {
+        pmctp->fillRopChannelTickHist(ph, irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+      }
     }  // End loop over selected MC particles by ROP
 
   }  // end Do MCParticle
@@ -657,48 +711,94 @@ void LbTupler::analyze(const art::Event& event) {
       cout << myname << "WARNING: Sim channel count exceeds TTree capacity." << endl;
     }
 
+    // Signal map for all sim hits and same split by ROP. 
+    bool usetpc = true;
+    TpcSignalMapPtr ptpsim(new TpcSignalMap("allsim", fgeohelp, usetpc));
+    TpcSignalMapVector tpsimByRop;
+   
     // Add sim channel info and hits to the sim channel signal maps.
     // We should but don't include contributions from descendants, e.g. mu->e.
     if ( fDoMcTpcSignalMap ) {
       if ( fdbg > 0 ) cout << myname << "Adding sim channels and hits to SimChannel performance objects (size = "
                           << simChannelHandle->size() << ")" << endl;
+
+      // Add SimChannels to the complete signal map.
+      for ( auto const& simchan : (*simChannelHandle) ) {
+        ptpsim->addSimChannel(*&simchan, -1);
+      }
+      ptpsim->buildHits();
+
+      // Split the complete SimChannel signal map by ROP.
+      ptpsim->splitByRop(tpsimByRop, true);
+
+      // Add SimChannels to selected-track signal maps.
       for ( auto pmctp : selectedMcTpcSignalMapsSC ) {
         // Add the sim channel info to the selected tracks.
         for ( auto const& simchan : (*simChannelHandle) ) {
-          pmctp->addSimChannel(*&simchan);
+          Index tid = pmctp->mcinfo()->trackID;
+          pmctp->addSimChannel(*&simchan, descendants[tid]);
         }  // End loop over sim channels in the event. 
         pmctp->buildHits();
       }  // End loop over selected SimChannel MC tracks
+
+      // Split the selected-track signal maps by ROP.
+      for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsSC ) {
+        ptsm->splitByRop(selectedMcTpcSignalMapsSCbyROP, true);
+      }  
+
       // Display the selected track performance objects.
       int flag = 0;
       if ( fdbg > 2 ) flag = 11;
       if ( fdbg > 0 ) {
+        cout << myname << "Summary of complete SimChannel signal map:" << endl;
+        ptpsim->print(cout, flag, myname + "  ");
+        cout << myname << "Summary of complete SimChannel signal maps (size = "
+             << tpsimByRop.size() << ") after splitting" << endl;
+        for ( auto ptsm : tpsimByRop ) {
+          ptsm->print(cout, flag, myname + "  ");
+        }  // End loop over signal maps
         cout << myname << "Summary of selected-track SimChannel signal maps (size = "
              << selectedMcTpcSignalMapsSC.size() << ")" << endl;
         for ( auto ptsm : selectedMcTpcSignalMapsSC ) {
           ptsm->print(cout, flag, myname + "  ");
         }  // End loop over signal maps
-      }
-
-      // Split signal maps by ROP.
-      for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsSC ) {
-        ptsm->splitByRop(selectedMcTpcSignalMapsSCbyROP, true);
-      }  
-      if ( fdbg > 0 ) {
         cout << myname << "Summary of selected-track SimChannel signal maps (size = "
              << selectedMcTpcSignalMapsSCbyROP.size() << ") after splitting" << endl;
         for ( auto ptsm : selectedMcTpcSignalMapsSCbyROP ) {
           ptsm->print(cout, flag, myname + "  ");
         }  // End loop over signal maps
-      }
+      }  // End dbg
 
     }  // end DoMcTpcSignalMap
 
-    // Create the Sim channel histograms: one for each plane with all selected particles.
+    // Create the Sim channel histograms:
+    // one for each plane with all sim hits
+    // one for each plane with all selected particles.
     // and one for each plane and selected particle.
-    vector<TH2*> sphists;
+
+    // All sim hits.
+    vector<TH2*> spahists;
     for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
       TH2* ph = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                  "Sim channels for " + geohelp.ropName(irop));
+      spahists.push_back(ph);
+      for ( const auto pmctp : tpsimByRop ) {
+        if ( pmctp->ropNbin(irop) == 0 ) continue;
+        pmctp->fillRopChannelTickHist(ph, irop);
+      }
+    }
+    // Display the contents of each SimChannel histogram.
+    if ( fdbg > 1 ) {
+      cout << myname << "Summary of complete SimChannel histograms:" << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        summarize2dHist(spahists[irop], myname, wnam, 4, 4);
+      }
+    }
+
+    // All selected particles.
+    vector<TH2*> sphists;
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      TH2* ph = hcreateSim.create("ssi" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
                                   "Sim channels for " + geohelp.ropName(irop));
       sphists.push_back(ph);
       for ( const auto pmctp : selectedMcTpcSignalMapsSC ) {
@@ -706,10 +806,9 @@ void LbTupler::analyze(const art::Event& event) {
         pmctp->fillRopChannelTickHist(ph, irop);
       }
     }
-
     // Display the contents of each SimChannel histogram.
     if ( fdbg > 1 ) {
-      cout << myname << "Summary of SimChannel histograms:" << endl;
+      cout << myname << "Summary of SimChannel histograms for all selected particles:" << endl;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
         summarize2dHist(sphists[irop], myname, wnam, 4, 4);
       }
@@ -726,8 +825,10 @@ void LbTupler::analyze(const art::Event& event) {
       TH2* pht = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
                                    "Sim channels for " + geohelp.ropName(irop),
                                    "", "MC particle " + strk, pmctp->tickRange());
-      pmctp->fillRopChannelTickHist(pht, irop);
-      summarize2dHist(pht, myname, wnam+8, 4, 4);
+      if ( pht != nullptr ) {
+        pmctp->fillRopChannelTickHist(pht, irop);
+        summarize2dHist(pht, myname, wnam+8, 4, 4);
+      }
     }
 
     // Fill tree.
@@ -1008,8 +1109,10 @@ void LbTupler::analyze(const art::Event& event) {
         TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
                                      "Cluster hits for " + geohelp.ropName(irop),
                                      "", "cluster " + sclu, pch->tickRange());
-        pch->fillRopChannelTickHist(ph,irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
+        if ( ph != nullptr ) {
+          pch->fillRopChannelTickHist(ph,irop);
+          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
+        }
       }
     }
 

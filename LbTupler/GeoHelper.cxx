@@ -171,7 +171,7 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   out << prefix << "TPC sizes [cm]:" << endl;
   out << prefix << setw(wcry) << "Cry" << setw(wtpc) << "TPC"
       << setw(wdim) << "Width" << setw(wdim) << "Height"<< setw(wdim) << "Length"
-      << setw(wdim) << "   xc" << "    yc"<< setw(wdim) << "    zc"
+      << setw(wdim) << "   xc" << setw(wdim) << "    yc"<< setw(wdim) << "    zc"
       << endl;
   // Check plane counts.
   for ( unsigned int icry=0; icry<ncry; ++icry ) {

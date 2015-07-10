@@ -3,6 +3,7 @@
 #include "TpcSignalMap.h"
 #include <iomanip>
 #include <sstream>
+#include <cmath>
 #include "TH2.h"
 #include "SimulationBase/MCParticle.h"
 #include "Simulation/SimChannel.h"
@@ -16,6 +17,7 @@ using std::endl;
 using std::setw;
 using std::ostream;
 using std::ostringstream;
+using std::abs;
 using simb::MCParticle;
 using sim::SimChannel;
 using tpc::badIndex;
@@ -138,7 +140,16 @@ int TpcSignalMap::addSignal(Channel chan, Tick tick, Signal signal, Index itpcin
 
 //**********************************************************************
 
-int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
+int TpcSignalMap::addSimChannel(const SimChannel& simchan, int tid, bool useUntrackedDescendants) {
+  IndexVector tids;
+  if ( tid >= 0 ) tids.push_back(tid);
+  return addSimChannel(simchan, tids, useUntrackedDescendants);
+}
+
+//**********************************************************************
+
+int TpcSignalMap::
+addSimChannel(const SimChannel& simchan, const IndexVector& tids, bool useUntrackedDescendants) {
   const string myname = "TpcSignalMap::addSimChannel: ";
   if ( usetpc() && geometryHelper() == nullptr ) {
     cout << myname << "ERROR: Geometry is required to find the TPC." << endl;
@@ -146,7 +157,7 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
   }
   Channel chan = simchan.Channel();
   auto const& tickides = simchan.TDCIDEMap();
-  if ( dbg() ) std::cout << myname << "Track " << tid << ", channel " << chan << endl;
+  if ( dbg() ) std::cout << myname << "# tracks " << tids.size() << ", channel " << chan << endl;
   for ( auto const& tickide : tickides ) {
     Tick tick = tickide.first;
     // Protect against negative ticks.
@@ -154,8 +165,11 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
     auto& ides = tickide.second;
     if ( dbg() ) std::cout << myname << "  Adding Tick=" << tick << " with IDE count " << ides.size() << endl;
     for ( auto& ide : ides ) {
-      if ( dbg() > 1 ) std::cout << myname << "    Adding TrackID=" << ide.trackID << endl;
-      if ( abs(ide.trackID) == tid ) {
+      int signedtid = ide.trackID;
+      if ( ! useUntrackedDescendants && signedtid < 0 ) continue;
+      Index abstid = abs(signedtid);
+      if ( dbg() > 1 ) std::cout << myname << "    Adding TrackID=" << signedtid << endl;
+      if ( tids.size() == 0 || std::find(tids.begin(), tids.end(), abstid) != tids.end() ) {
         //Signal sig = ide.numElectrons;
         Signal sig = ide.energy;
         if ( dbg() > 1 ) std::cout << myname << "    Signal=" << sig << endl;
@@ -188,7 +202,7 @@ int TpcSignalMap::addSimChannel(const SimChannel& simchan, unsigned int tid) {
 //**********************************************************************
 
 int TpcSignalMap::addSimChannel(const sim::SimChannel& sch) {
-  if ( mcinfo() == nullptr ) return -1;
+  if ( mcinfo() == nullptr ) addSimChannel(sch, -1);
   return addSimChannel(sch, mcinfo()->trackID);
 }
 
@@ -661,7 +675,7 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
   // Line for each channel displaying the time range(s) and signal
   if ( detail1 == 0 ) {
     out << hdrprefix;
-    if ( haveMcinfo() ) out << "MC track " << setw(3) << mcinfo()->trackID << " ";
+    //if ( haveMcinfo() ) out << "MC track " << setw(3) << mcinfo()->trackID << " ";
     out << "TpcSignalMap " << setw(14) << name() << " ";
     if ( rop() == badIndex() ) {
       unsigned int nrop = ropCount();

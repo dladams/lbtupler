@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <map>
+#include "TpcTypes.h"
 
 namespace art {
 class Event;
@@ -46,8 +47,11 @@ public:
   //   par - The input MCParticle.
   //   pmctp - If non-null, the MCparticle is used to fill this performance object.
   //   useDescendants - If true, descendants are also added to the signal map.
+  //   ptids - if non-null, the ID for this track and descendants (if used) are added to
+  //           this vector
   // Returns 0 if particle is accepted, >0 if rejected, <0 for error.
-  int addMCParticle(const simb::MCParticle& par, TpcSignalMap* pmtsm =nullptr, bool useDescendants =false);
+  int addMCParticle(const simb::MCParticle& par, TpcSignalMap* pmtsm =nullptr,
+                    bool useDescendants =false, tpc::IndexVector* ptids =nullptr);
 
 private:
 
@@ -80,7 +84,7 @@ private:
   int fntpcout;              // # TPC exits to not-TPC or other TPC
   int fncryin;               // # cryo entries from non-cryo or other cryo
   int fncryout;              // # cryo exits to non-cryo or other cryo
-  static const unsigned int fmaxchild = 20;
+  static const unsigned int fmaxchild = 50;
   int fchild[fmaxchild];
   int fdetchild[fmaxchild];
 

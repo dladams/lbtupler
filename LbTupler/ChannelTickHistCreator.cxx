@@ -28,7 +28,7 @@ TH2* ChannelTickHistCreator::
 create(string slab, unsigned int chan1, unsigned int chan2, string stitle,
        string sevtNameSuffix, string sevtTitleSuffix, TickRange atickRange) {
   const string myname = "ChannelTickHistCreator::create: ";
-  const int dbg = 0;
+  const int dbg = 0;    // 0 for normal running
   TH2* ph = nullptr;
   if ( chan2 <= chan1 ) return nullptr;
   int nchan = chan2 - chan1;
@@ -53,6 +53,8 @@ create(string slab, unsigned int chan1, unsigned int chan2, string stitle,
     if ( tick2 > mtick2 ) tick2 = mtick2;
     if ( dbg ) cout << myname << "X-axis: " << atick1 << "-" << atick2 << " ==> "
                     << tick1 << "-" << tick2 << endl;
+    // Check if ther is no overlap between object and requested ranges.
+    if ( tick2 <= tick1 ) return nullptr;
   }
   int ntick = tick2 - tick1;
   string hname = "h" + m_sevt + sevtNameSuffix + "_" + slab;
