@@ -14,10 +14,13 @@
 
 // Local includes.
 #include "TpcSignalMatcher.h"
+#include "TpcTypes.h"
 
 using std::cout;
 using std::endl;
 using std::string;
+using tpc::Index;
+using tpc::badIndex;
 
 //************************************************************************
 
@@ -69,12 +72,20 @@ int TpcSignalMatchTree::fill(const art::Event& evt, const TpcSignalMatcher& matc
     fref = ient;
     fmatch = match.matchIndex(ient);
     fdistance = match.matchDistance(ient);
-    const TpcSignalMap& rtsm = *match.referenceVector().at(ient);
-    const TpcSignalMap& mtsm = *match.matchVector().at(ient);
-    frop = rtsm.rop();
-    fmnbin = mtsm.binCount();
-    frnbin = rtsm.binCount();
-    frnseg = rtsm.segments().size();
+    Index imat = match.matchIndex(ient);
+    if ( imat == badIndex() ) {
+      frop = badIndex();
+      fmnbin = 0;
+      frnbin = 0;
+      frnseg = 0;
+    } else {
+      const TpcSignalMap& rtsm = *match.referenceVector().at(ient);
+      const TpcSignalMap& mtsm = *match.matchVector().at(imat);
+      frop = rtsm.rop();
+      fmnbin = mtsm.binCount();
+      frnbin = rtsm.binCount();
+      frnseg = rtsm.segments().size();
+    }
     m_ptree->Fill();
   }
 

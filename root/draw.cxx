@@ -114,7 +114,7 @@ int draw(std::string name ="help", int how =0, double xmin =0.0, double xmax =0.
         double x = phnew->GetXaxis()->GetBinCenter(ix);
         double val = phnew->GetBinContent(ix, iy);
         if ( val != 0.0 ) {
-          cout << "Adding " << x << ", " << y << ": " << val << endl;
+          //cout << "Adding " << x << ", " << y << ": " << val << endl;
           phdraw->Fill(x, y, val);
         }
       }
