@@ -153,7 +153,7 @@ private:
   string fWireProducerLabel;       // The name of the producer that created wires
   string fClusterProducerLabel;    // The name of the producer that created clusters
   string fRawDigitProducerLabel;   // The name of the producer that created the raw digits.
-  int fSelectedPDG;                     // PDG code of particle we'll focus on
+  bool fUseGammaNotPi0;            // Flag to select MCParticle gamma from pi0 instead of pi0
   double fBinSize;                      // For dE/dx work: the value of dx. 
 
   // Pointers to the histograms we'll create. 
@@ -365,7 +365,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fHitProducerLabel        = p.get<string>("HitLabel");
   fWireProducerLabel       = p.get<string>("WireLabel");
   fClusterProducerLabel    = p.get<string>("ClusterLabel");
-  fSelectedPDG             = p.get<int>("PDGcode");
+  fUseGammaNotPi0          = p.get<bool>("UseGammaNotPi0");
   fBinSize                 = p.get<double>("BinSize");
   fscCapacity              = p.get<double>("SimChannelSize");
   ftdcTickMin              = p.get<int>("TdcTickMin");
@@ -398,7 +398,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "HitLabel" << sep << fHitProducerLabel << endl;
     cout << prefix << setw(wlab) << "WireLabel" << sep << fWireProducerLabel << endl;
     cout << prefix << setw(wlab) << "ClusterLabel" << sep << fClusterProducerLabel << endl;
-    cout << prefix << setw(wlab) << "PDGcode" << sep << fSelectedPDG << endl;
+    cout << prefix << setw(wlab) << "UseGammaNotPi0" << sep << fUseGammaNotPi0 << endl;
     cout << prefix << setw(wlab) << "BinSize" << sep << fBinSize << endl;
     cout << prefix << setw(wlab) << "SimChannelSize" << sep << fscCapacity << endl;
     cout << prefix << setw(wlab) << "TdcTickMin" << sep << ftdcTickMin << endl;
@@ -545,8 +545,7 @@ void LbTupler::analyze(const art::Event& event) {
       // Select initial-state particles.
       bool select = proc == 0;
       // Except, use decay gammas for pi0.
-      bool useGammaNotPi0 = true;
-      if ( useGammaNotPi0 ) {
+      if ( fUseGammaNotPi0 ) {
         if ( rpdg == 9 ) select = false;
         else select |= pi0gamma;
       }
@@ -1130,6 +1129,7 @@ void LbTupler::analyze(const art::Event& event) {
     if ( fdbg > 1 ) cout << myname << "Matching SC and clusters." << endl;
     TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, clusterSignalMap, true, 0);
     clumatchsc.print(cout, 0);
+    if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
     if ( m_ptsmtSC != nullptr ) m_ptsmtSC->fill(event, clumatchsc);
 
   }  // end DoClusters

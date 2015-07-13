@@ -62,6 +62,9 @@ int TpcSignalMatchTree::fill(const art::Event& evt, const TpcSignalMatcher& matc
   fevent  = evt.id().event(); 
   fRun    = evt.run();
   fSubRun = evt.subRun();
+  cout << myname << "            Match size: " << match.size() << endl;
+  cout << myname << " Reference vector size: " << match.referenceVector().size() << endl;
+  cout << myname << "     Match vector size: " << match.matchVector().size() << endl;
   for ( unsigned int ient =0; ient<match.size(); ++ ient ) {
     fref = ient;
     fmatch = match.matchIndex(ient);

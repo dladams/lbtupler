@@ -35,7 +35,9 @@ else if [ $ARG -eq 4 ]; then
   FILE="../prod/text_gen.root"
 else if [ $ARG -eq 5 ]; then
   FILE="../prod/text_hits.root"
-fi; fi; fi; fi; fi; fi
+else if [ $ARG -eq 6 ]; then
+  FILE=$DATADIR/prodgenie_numu_nc_uniform_flux_uboone_20150706T151726_gen_4e2e9fd3-96fd-42a1-8522-1e0a7c11b4cc.root
+fi; fi; fi; fi; fi; fi; fi
 
 ARGS="-n $NEVT --nskip $NSKIP $AFCL $FILE"
 

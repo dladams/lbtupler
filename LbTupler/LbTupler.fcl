@@ -101,7 +101,7 @@ physics:
       module_type:     "LbTupler"
 
       # Debug level: 0 for silent, 5 for very noisy
-      DebugLevel:   4
+      DebugLevel:   1
 
       # The input parameters for our LbTupler module. Compare
       # the names you see here with the reconfigure method in
@@ -138,9 +138,8 @@ physics:
       # The same for raw digits.
       RawDigitLabel:   "daq"
 
-      # In this example, which primary particle(s) we'll focus on in an event.
-      # PDG code 13 = mu-.
-      PDGcode:          13
+      # Select MC particle gamma from pi0 in place of pi0
+      UseGammaNotPi0:   true
 
       # dx used for the dE/dx calculation; units are cm. 
       # 0 for just one bin
