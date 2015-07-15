@@ -2,11 +2,19 @@
 
 physics.analyzers.LbTupler.DebugLevel: 2
 
-physics.analyzers.LbTupler.DoMCParticles:    true
-physics.analyzers.LbTupler.DoSimChannels:    true
-physics.analyzers.LbTupler.DoRaw:            true
-physics.analyzers.LbTupler.DoWires:          true
-physics.analyzers.LbTupler.DoHits:           true
-physics.analyzers.LbTupler.DoClusters:       true
+physics.analyzers.LbTupler.DoMcParticleTree:               true
+physics.analyzers.LbTupler.DoSimChannelTree:               false
+
+physics.analyzers.LbTupler.DoMcParticleSignalHists:        false
+physics.analyzers.LbTupler.DoMcDescendantSignalHists:      false
+physics.analyzers.LbTupler.DoSimChannelSignalHists:        true
+physics.analyzers.LbTupler.DoRawSignalHists:               false
+physics.analyzers.LbTupler.DoDeconvolutedSignalHists:      true
+physics.analyzers.LbTupler.DoHitSignalHists:               false
+physics.analyzers.LbTupler.DoClusterSignalHists:           true
+
+physics.analyzers.LbTupler.DoMcParticleClusterMatching:    false
+physics.analyzers.LbTupler.DoMcDescendantClusterMatching:  false
+physics.analyzers.LbTupler.DoSimChannelClusterMatching:    true
 
 physics.analyzers.LbTupler.TdcTickMax: 3200

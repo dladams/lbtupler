@@ -37,7 +37,13 @@ else if [ $ARG -eq 5 ]; then
   FILE="../prod/text_hits.root"
 else if [ $ARG -eq 6 ]; then
   FILE=$DATADIR/prodgenie_numu_nc_uniform_flux_uboone_20150706T151726_gen_4e2e9fd3-96fd-42a1-8522-1e0a7c11b4cc.root
-fi; fi; fi; fi; fi; fi; fi
+else if [ $ARG -eq 7 ]; then
+  # MCC3 single muon
+  FILE=$DATADIR/AntiMuonCutEvents_LSU_lbne35t_7_20150612T222627_gen_20150613T005121_g4_20150613T012324_detsim_20150613T015359_reco.root
+else if [ $ARG -eq 8 ]; then
+  # MCC3 milliblock
+  FILE=$DATADIR/prodcosmics_lbne35t_milliblock_1_20150612T225517_gen_20150613T020241_g4_20150613T023146_detsim_milliblock_20150613T183059_reco_milliblock.root
+fi; fi; fi; fi; fi; fi; fi; fi; fi
 
 ARGS="-n $NEVT --nskip $NSKIP $AFCL $FILE"
 

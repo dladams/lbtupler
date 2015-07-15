@@ -47,7 +47,7 @@ MCTrajectoryFollower(double dsmax, string tname, const GeoHelper* pgeohelp,
   m_geohelp(pgeohelp),
   m_pevt(nullptr), m_ppars(nullptr)  {
 
-  const string myname = "MCTrajectory:ctor: ";
+  const string myname = "MCTrajectoryFollower:ctor: ";
 
   if ( m_geohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
@@ -127,7 +127,7 @@ MCTrajectoryFollower(double dsmax, string tname, const GeoHelper* pgeohelp,
     m_ptree->Branch("detz2",        &fdetz2,        "detz2/F");
   }
 
-  if ( m_dbg >= 0 ) {
+  if ( m_dbg > 0 ) {
     cout << myname << "Initialization complete." << endl;
     cout << myname << "    Debug level: " << m_dbg << endl;
     cout << myname << "      Tree name: " << m_tname << endl;

@@ -28,6 +28,7 @@ TpcSignalMatchTree::TpcSignalMatchTree(string tname)
 : m_tname(tname) {
 
   const string myname = "TpcSignalMatchTree: ";
+  const int dbg = 0;
 
   // Access ART's TFileService, which will handle creating and writing
   // histograms and n-tuples for us. 
@@ -48,8 +49,10 @@ TpcSignalMatchTree::TpcSignalMatchTree(string tname)
   m_ptree->Branch("mnbin",       &fmnbin,          "mnbin/I");     // # bins in ref
   m_ptree->Branch("rnseg",       &frnseg,          "rnseg/I");     // # bins in ref
 
-  cout << myname << "Initialization complete." << endl;
-  cout << myname << "   Tree: " << m_ptree->GetName() << endl;
+  if ( dbg > 0 ) {
+    cout << myname << "Initialization complete." << endl;
+    cout << myname << "   Tree: " << m_ptree->GetName() << endl;
+  }
 }
  
 //************************************************************************

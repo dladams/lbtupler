@@ -153,6 +153,24 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     out << prefix << "Geometry is not defined." << endl;
     return out;
   }
+  cout << prefix << "             Total # TPCs: " << ntpc() << endl;
+  cout << prefix << "     Total # TPC channels: " << geometry()->Nchannels() << endl;
+  cout << prefix << "Total # optical detectors: " << geometry()->NOpDet() << endl;
+  cout << prefix << " Total # optical channels: " << geometry()->NOpChannels() << endl;
+  cout << prefix << endl;
+  cout << prefix << "There are " << ntpc() << " TPCs:" << endl;
+  cout << prefix << "      name       APA" << endl;
+  for ( unsigned int itpc=0; itpc<ntpc(); ++itpc ) {
+    cout << prefix << setw(10) << tpcName(itpc) << setw(10) << tpcApa(itpc) << endl;
+  }
+  cout << prefix << endl;
+  cout << prefix << "There are " << nrop() << " ROPs (readout planes):" << endl;
+  cout << prefix << "      name  1st chan     #chan  orient" << endl;
+  for ( unsigned int irop=0; irop<nrop(); ++irop ) {
+    cout << prefix << setw(10) << ropName(irop) << setw(10) << ropFirstChannel(irop)
+         << setw(10) << ropNChannel(irop) << setw(8) << ropView(irop) << endl;
+  }
+
   unsigned int wlab = 30;
   unsigned int wcry =  4;
   unsigned int wtpc =  4;
@@ -273,6 +291,35 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   
 //**********************************************************************
 
+// This geometry dump code is from Michelle Stancari.
+ostream& GeoHelper::dump(ostream& out) const {
+  const string myname = "GeoHelper::dump: ";
+  double xyz[3]; 
+  double abc[3];
+  int chan;
+  int cryo = geometry()->Ncryostats();
+  for (int c=0; c<cryo; ++c){
+    int tpc = geometry()->NTPC(c);
+    for (int t=0; t<tpc; ++t){
+      int Nplanes = geometry()->Nplanes(t,c);
+      for (int p=0;p<Nplanes;++p) {
+        int Nwires = geometry()->Nwires(p,t,c);
+        out << "FLAG " << endl;
+        for (int w=0; w<Nwires; ++w){
+          geometry()->WireEndPoints(c,t,p,w,xyz,abc);
+          chan = geometry()->PlaneWireToChannel(p,w,t,c);
+          out << myname << setw(4) << chan << " " << c << " " << t << " " << p << setw(4) << w << " "
+                    << xyz[0] << " " << xyz[1] << " " << xyz[2] <<  " "
+                    << abc[0] << " " << abc[1] << " " << abc[2] << endl;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+//**********************************************************************
+
 Index GeoHelper::channelRop(Index chan) const {
   const string myname = "GeoHelper::channelRop: ";
   Index irop = nrop();
@@ -333,10 +380,12 @@ Status GeoHelper::fillStandardApaMapping() {
         }
         if ( m_dbg > 0 ) {
           ostringstream ssplane;
-          cout << myname << "Plane" << ipla <<  " has " << nwire
-               << " wires: [" << setw(4) << firstwire << "," << setw(4) << lastwire << "]"
-               << " and " << nchan << "/" << lastchan - firstchan + 1 << " channels: ["
-               << setw(4) << firstchan << "," << setw(4) << lastchan << "]" << endl;
+          if ( m_dbg > 0 ) {
+            cout << myname << "Plane" << ipla <<  " has " << nwire
+                 << " wires: [" << setw(4) << firstwire << "," << setw(4) << lastwire << "]"
+                 << " and " << nchan << "/" << lastchan - firstchan + 1 << " channels: ["
+                 << setw(4) << firstchan << "," << setw(4) << lastchan << "]" << endl;
+          }
         }
         // Check if the range for the current readout plane (ROP) is already covered.
         Index irop;

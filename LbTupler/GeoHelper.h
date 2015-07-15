@@ -9,7 +9,7 @@
 #define GeoHelper_H
 
 #include <string>
-#include <iosfwd>
+#include <iostream>
 #include <vector>
 #include <map>
 // We need the folowing because simple enums cannot be forward declared.
@@ -91,9 +91,11 @@ public:
   // Return the ROP for a TPC plane.
   Index rop(geo::PlaneID pid) const;
 
-  // Return a global plane index for a plane in a TPC
   // Print detector description.
-  std::ostream& print(std::ostream& out, int iopt =0, std::string prefix ="") const;
+  std::ostream& print(std::ostream& out =std::cout, int iopt =0, std::string prefix ="") const;
+
+  // Geometry dump from Michelle.
+  std::ostream& dump(std::ostream& out =std::cout) const;
 
   // Return the Rop for a channel.
   // Returns nrop() if the channel is not valid.

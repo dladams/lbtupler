@@ -6,7 +6,6 @@
 #ifndef LbTupler_Module
 #define LbTupler_Module
 
-#include <iostream>
 #include <iomanip>
 #include <sstream>
 
@@ -135,31 +134,47 @@ private:
   // The stuff below is the part you'll most likely have to change to
   // go from this custom example to your own task.
 
-  // The parameters we'll read from the .fcl file.
-  int fdbg;                        // Debug level. Larger for more log noise.
-  bool fDoTruth;                   // Read truth container.
-  bool fDoMCParticles;             // Create MC particle tree and histograms.
-  bool fDoMcTpcSignalMap;          // Evaluate MC track performance.
-  bool fDoSimChannels;             // Create the SimChannel performance objects and histograms.
-  bool fDoSimChannelTree;          // Create the SimChannel tree.
-  bool fDoRaw;                     // Create the RawDigits tree and histograms.
-  bool fDoWires;                   // Create the Wire histograms.
-  bool fDoHits;                    // Create the Hit histograms.
-  bool fDoClusters;                // Create the Cluster tree.
-  string fTruthProducerLabel;      // The name of the producer that tracked simulated particles through the detector
-  string fParticleProducerLabel;   // The name of the producer that tracked simulated particles through the detector
-  string fSimulationProducerLabel; // The name of the producer that tracked simulated particles through the detector
-  string fHitProducerLabel;        // The name of the producer that created hits
-  string fWireProducerLabel;       // The name of the producer that created wires
-  string fClusterProducerLabel;    // The name of the producer that created clusters
-  string fRawDigitProducerLabel;   // The name of the producer that created the raw digits.
-  bool fUseGammaNotPi0;            // Flag to select MCParticle gamma from pi0 instead of pi0
-  double fBinSize;                      // For dE/dx work: the value of dx. 
+  // The parameters we'll read from the fcl file.
+  int fdbg;                            // Debug level. Larger for more log noise.
+  bool fDoTruth;                       // Read truth container.
+  bool fDoMcParticleTree;              // Create the McParticle tree.
+  bool fDoSimChannelTree;              // Create the SimChannel tree.
+  bool fDoMcParticleSignalHists;       // Create signal histograms for McParticles
+  bool fDoMcDescendantSignalHists;     // Create signal histograms for McParticle descendants
+  bool fDoSimChannelSignalHists;       // Create signal histograms for SimChannels
+  bool fDoRawSignalHists;              // Create signal histograms for the RawDigits
+  bool fDoDeconvolutedSignalHists;     // Create signal histograms for the Wires (deconvoluted signals)
+  bool fDoHitSignalHists;              // Create signal histograms for the the Hits.
+  bool fDoClusterSignalHists;          // Create signal histograms for the Clusters.
+  bool fDoMcParticleClusterMatching;   // Match clusters to McParticle signals.
+  bool fDoMcDescendantClusterMatching; // Match clusters to McParticle descendant signals.
+  bool fDoSimChannelClusterMatching;   // Match clusters to SimChannel signals.
+  string fTruthProducerLabel;          // The name of the producer that tracked simulated particles through the detector
+  string fParticleProducerLabel;       // The name of the producer that tracked simulated particles through the detector
+  string fSimulationProducerLabel;     // The name of the producer that tracked simulated particles through the detector
+  string fHitProducerLabel;            // The name of the producer that created hits
+  string fWireProducerLabel;           // The name of the producer that created wires
+  string fClusterProducerLabel;        // The name of the producer that created clusters
+  string fRawDigitProducerLabel;       // The name of the producer that created the raw digits.
+  bool fUseGammaNotPi0;                // Flag to select MCParticle gamma from pi0 instead of pi0
+  double fBinSize;                     // For dE/dx work: the value of dx. 
+
+  // Derived control parameters.
+  bool fDoMcParticles;             // Read MC particles.
+  bool fDoSimChannels;             // Read SimChannels
+  bool fDoRaw;                     // Read raw data
+  bool fDoWires;                   // Read wire (deconvoluted) data
+  bool fDoHits;                    // Read hit data
+  bool fDoClusters;                // Read cluster data
+  bool fDoMcParticleSelection;     // Select MC particles.
+  bool fDoMcParticleSignalMaps;    // Fill MC particle signal maps.
+  bool fDoMcDescendantSignalMaps;  // Fill MC particle descendant signal maps.
+  bool fDoSimChannelSignalMaps;    // Fill SimChannel signal maps.
+  bool fDoClusterSignalMaps;       // Fill Cluster signal maps.
 
   // Pointers to the histograms we'll create. 
   TH1D* fpdgCodeHist;
   TH1D* fMomentumHist;
-  TH1D* fTrackLengthHist;
 
   // The MCParticle trajectory managers.
   MCTrajectoryFollower* m_pmctrajmc;
@@ -232,6 +247,7 @@ LbTupler::~LbTupler() { }
 
 void LbTupler::beginJob() {
   const string myname = "LbTupler::beginJob: ";
+  if ( fdbg > 0 ) cout << myname << "Begin begin job." << endl;
 
   if ( fgeohelp == nullptr ) {
     cout << myname << "ERROR: Geometry helper is absent." << endl;
@@ -243,69 +259,11 @@ void LbTupler::beginJob() {
   // histograms and n-tuples for us. 
   art::ServiceHandle<art::TFileService> tfs;
 
-  // Fetch geometry.
-  unsigned int icry = 0;
-  if ( fdbg > 0 ) {
-    cout << myname << "             Total # TPCs: " << geohelp.ntpc() << endl;
-    cout << myname << "     Total # TPC channels: " << fGeometry->Nchannels() << endl;
-    cout << myname << "Total # optical detectors: " << fGeometry->NOpDet(icry) << endl;
-    cout << myname << " Total # optical channels: " << fGeometry->NOpChannels() << endl;
-    cout << myname << endl;
-    cout << myname << "There are " << geohelp.ntpc() << " TPCs:" << endl;
-    cout << myname << "      name       APA" << endl;
-    for ( unsigned int itpc=0; itpc<geohelp.ntpc(); ++itpc ) {
-      cout << myname << setw(10) << geohelp.tpcName(itpc) << setw(10) << geohelp.tpcApa(itpc) << endl;
-    }
-    cout << myname << endl;
-    cout << myname << "There are " << geohelp.nrop() << " ROPs (readout planes):" << endl;
-    cout << myname << "      name  1st chan     #chan  orient" << endl;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      cout << myname << setw(10) << geohelp.ropName(irop) << setw(10) << geohelp.ropFirstChannel(irop)
-           << setw(10) << geohelp.ropNChannel(irop) << setw(8) << geohelp.ropView(irop) << endl;
-    }
-  }
-  double detLength = fGeometry->DetLength(); 
-  double detWidth  = fGeometry->DetHalfWidth()  * 2.;
-  double detHeight = fGeometry->DetHalfHeight() * 2.;
-  double detVolume = sqrt( detLength*detLength + detWidth*detWidth + detHeight*detHeight );
-  if ( fdbg > 0 ) {
-    cout << myname << "Detector length: " << detLength << " cm" << endl;
-    cout << myname << "Detector width:  " << detWidth  << " cm" << endl;
-    cout << myname << "Detector height: " << detHeight << " cm" << endl;
-    cout << myname << "Detector volume: " << detVolume << " cm^3" << endl;
-  }
-
-  // Geometry dump from Michelle.
-  if ( fdbg > 4 ) {
-    double xyz[3];                                                                                                                                   
-    double abc[3];                                                                 
-    int chan;
-    int cryo = fGeometry->Ncryostats();                                                             
-    for (int c=0; c<cryo;++c){                   
-      int tpc =fGeometry->NTPC(c);                                               
-      for (int t=0; t<tpc; ++t){                                            
-        int Nplanes=fGeometry->Nplanes(t,c);                                      
-        for (int p=0;p<Nplanes;++p) {                                        
-          int Nwires = fGeometry->Nwires(p,t,c);                                  
-          cout << "FLAG " << endl;
-          for (int w=0;w<Nwires;++w){
-            fGeometry->WireEndPoints(c,t,p,w,xyz,abc);
-            chan=fGeometry->PlaneWireToChannel(p,w,t,c);  
-            cout << "FLAG " << setw(4) << chan << " " << c << " " << t << " " << p << setw(4) << w << " "
-                      << xyz[0] << " " << xyz[1] << " " << xyz[2] <<  " "
-                      << abc[0] << " " << abc[1] << " " << abc[2] << endl;                                         
-          }
-        }
-      }
-    }
-  }
-
   // Define the histograms. Putting semi-colons around the title
   // causes it to be displayed as the x-axis label if the histogram
   // is drawn.
   fpdgCodeHist     = tfs->make<TH1D>("pdgcodes",";PDG Code;",                  5000, -2500, 2500);
   fMomentumHist    = tfs->make<TH1D>("mom",     ";particle Momentum (GeV);",    100, 0.,    10.);
-  fTrackLengthHist = tfs->make<TH1D>("length",  ";particle track length (cm);", 200, 0, detLength);
 
   // Define our n-tuples, which are limited forms of ROOT
   // TTrees. Start with the TTree itself.
@@ -313,7 +271,9 @@ void LbTupler::beginJob() {
   // Create the MCParticle trajectory manager. It builds the simulation tree and fills
   // the signal map for each selected MC particle.
   unsigned int minNptdet = 1;
-  m_pmctrajmc = new MCTrajectoryFollower(fmcpdsmax, "LbTuplerSimulation", fgeohelp, minNptdet, 0);
+  string mcptreename;
+  if ( fDoMcParticleTree ) mcptreename = "McParticleTree";
+  m_pmctrajmc = new MCTrajectoryFollower(fmcpdsmax, mcptreename, fgeohelp, minNptdet, 0);
   m_pmctrajmd = new MCTrajectoryFollower(fmcpdsmax, "", fgeohelp, 0, 0);
 
   // Match trees.
@@ -331,6 +291,8 @@ void LbTupler::beginJob() {
   if ( fDoSimChannels && fDoSimChannelTree ) {
     m_sctupler = new SimChannelTupler(*fgeohelp, *tfs, fscCapacity);
   }
+
+  if ( fdbg > 0 ) cout << myname << "End begin job." << endl;
 }
  
 //************************************************************************
@@ -348,49 +310,76 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   const string myname = "LbTupler::reconfigure: ";
   // Read parameters from the .fcl file. The names in the arguments
   // to p.get<TYPE> must match names in the .fcl file.
-  fdbg                     = p.get<int>        ("DebugLevel");
-  fDoTruth                 = p.get<bool>("DoTruth");
-  fDoMCParticles           = p.get<bool>("DoMCParticles");
-  fDoMcTpcSignalMap        = p.get<bool>("DoMcTpcSignalMap");
-  fDoSimChannels           = p.get<bool>("DoSimChannels");
-  fDoSimChannelTree        = p.get<bool>("DoSimChannelTree");
-  fDoRaw                   = p.get<bool>("DoRaw");
-  fDoWires                 = p.get<bool>("DoWires");
-  fDoHits                  = p.get<bool>("DoHits");
-  fDoClusters              = p.get<bool>("DoClusters");
-  fTruthProducerLabel      = p.get<string>("TruthLabel");
-  fParticleProducerLabel   = p.get<string>("ParticleLabel");
-  fSimulationProducerLabel = p.get<string>("SimulationLabel");
-  fRawDigitProducerLabel   = p.get<string>("RawDigitLabel");
-  fHitProducerLabel        = p.get<string>("HitLabel");
-  fWireProducerLabel       = p.get<string>("WireLabel");
-  fClusterProducerLabel    = p.get<string>("ClusterLabel");
-  fUseGammaNotPi0          = p.get<bool>("UseGammaNotPi0");
-  fBinSize                 = p.get<double>("BinSize");
-  fscCapacity              = p.get<double>("SimChannelSize");
-  ftdcTickMin              = p.get<int>("TdcTickMin");
-  ftdcTickMax              = p.get<int>("TdcTickMax");
-  fmcpdsmax                = p.get<double>("McParticleDsMax");
-  fadcmevu                 = p.get<double>("AdcToMeVConversionU");
-  fadcmevv                 = p.get<double>("AdcToMeVConversionV");
-  fadcmevz                 = p.get<double>("AdcToMeVConversionZ");
-  fdemaxmcp                = p.get<double>("HistDEMaxMcParticle");
-  fdemax                   = p.get<double>("HistDEMax");
-  fhistusede               = p.get<bool>("HistUseDE");
+  fdbg                           = p.get<int>("DebugLevel");
+  fDoTruth                       = p.get<bool>("DoTruth");
+  fDoMcParticleTree              = p.get<bool>("DoMcParticleTree");
+  fDoSimChannelTree              = p.get<bool>("DoSimChannelTree");
+  fDoMcParticleSignalHists       = p.get<bool>("DoMcParticleSignalHists");
+  fDoMcDescendantSignalHists     = p.get<bool>("DoMcDescendantSignalHists");
+  fDoSimChannelSignalHists       = p.get<bool>("DoSimChannelSignalHists");
+  fDoRawSignalHists              = p.get<bool>("DoRawSignalHists");
+  fDoDeconvolutedSignalHists     = p.get<bool>("DoDeconvolutedSignalHists");
+  fDoHitSignalHists              = p.get<bool>("DoHitSignalHists");
+  fDoClusterSignalHists          = p.get<bool>("DoClusterSignalHists");
+  fDoMcParticleClusterMatching   = p.get<bool>("DoMcParticleClusterMatching");
+  fDoMcDescendantClusterMatching = p.get<bool>("DoMcDescendantClusterMatching");
+  fDoSimChannelClusterMatching   = p.get<bool>("DoSimChannelClusterMatching");
+  fTruthProducerLabel            = p.get<string>("TruthLabel");
+  fParticleProducerLabel         = p.get<string>("ParticleLabel");
+  fSimulationProducerLabel       = p.get<string>("SimulationLabel");
+  fRawDigitProducerLabel         = p.get<string>("RawDigitLabel");
+  fHitProducerLabel              = p.get<string>("HitLabel");
+  fWireProducerLabel             = p.get<string>("WireLabel");
+  fClusterProducerLabel          = p.get<string>("ClusterLabel");
+  fUseGammaNotPi0                = p.get<bool>("UseGammaNotPi0");
+  fBinSize                       = p.get<double>("BinSize");
+  fscCapacity                    = p.get<double>("SimChannelSize");
+  ftdcTickMin                    = p.get<int>("TdcTickMin");
+  ftdcTickMax                    = p.get<int>("TdcTickMax");
+  fmcpdsmax                      = p.get<double>("McParticleDsMax");
+  fadcmevu                       = p.get<double>("AdcToMeVConversionU");
+  fadcmevv                       = p.get<double>("AdcToMeVConversionV");
+  fadcmevz                       = p.get<double>("AdcToMeVConversionZ");
+  fdemaxmcp                      = p.get<double>("HistDEMaxMcParticle");
+  fdemax                         = p.get<double>("HistDEMax");
+  fhistusede                     = p.get<bool>("HistUseDE");
+
+  // Derived control flags.
+  fDoMcParticleSignalMaps   = fDoMcParticleSignalHists   || fDoMcParticleClusterMatching;
+  fDoMcDescendantSignalMaps = fDoMcDescendantSignalHists || fDoMcDescendantClusterMatching;
+  fDoSimChannelSignalMaps   = fDoSimChannelSignalHists   || fDoSimChannelClusterMatching;
+  fDoClusterSignalMaps = fDoClusterSignalHists ||
+                         fDoMcParticleClusterMatching || fDoMcDescendantClusterMatching ||
+                         fDoSimChannelClusterMatching;
+  fDoMcParticleSelection = fDoMcParticleSignalMaps || fDoMcDescendantSignalMaps || fDoSimChannelSignalMaps ||
+                           fDoMcParticleTree;
+  fDoMcParticles = fDoMcParticleSelection;
+  fDoSimChannels = fDoSimChannelSignalMaps || fDoSimChannelTree;
+  fDoRaw = fDoRawSignalHists;
+  fDoWires = fDoDeconvolutedSignalHists;
+  fDoClusters = fDoClusterSignalMaps;
+
+  // Display properties.
   string sep = ": ";
-  int wlab = 20;
+  int wlab = 30;
   if ( fdbg > 0 ) {
     string prefix = myname + "  ";
-    cout << myname << setw(wlab) << "Module properties:" << endl;
+    cout << endl;
+    cout << myname << "Module properties:" << endl;
     cout << prefix << setw(wlab) << "DebugLevel" << sep << fdbg << endl;
-    cout << prefix << setw(wlab) << "DoMCParticles" << sep << fDoMCParticles << endl;
-    cout << prefix << setw(wlab) << "DoMcTpcSignalMap" << sep << fDoMcTpcSignalMap << endl;
-    cout << prefix << setw(wlab) << "DoSimChannels" << sep << fDoSimChannels << endl;
+    cout << prefix << setw(wlab) << "DoTruth" << sep << fDoTruth << endl;
+    cout << prefix << setw(wlab) << "DoMcParticleTree" << sep << fDoMcParticleTree << endl;
     cout << prefix << setw(wlab) << "DoSimChannelTree" << sep << fDoSimChannelTree << endl;
-    cout << prefix << setw(wlab) << "DoRaw" << sep << fDoRaw << endl;
-    cout << prefix << setw(wlab) << "DoWires" << sep << fDoWires << endl;
-    cout << prefix << setw(wlab) << "DoHits" << sep << fDoHits << endl;
-    cout << prefix << setw(wlab) << "DoClusters" << sep << fDoClusters << endl;
+    cout << prefix << setw(wlab) << "DoMcParticleSignalHists" << sep << fDoMcParticleSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoMcDescendantSignalHists" << sep << fDoMcDescendantSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoSimChannelSignalHists" << sep << fDoSimChannelSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoDeconvolutedSignalHists" << sep << fDoDeconvolutedSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoRawSignalHists" << sep << fDoRawSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoHitSignalHists" << sep << fDoHitSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoClusterSignalHists" << sep << fDoClusterSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoMcParticleClusterMatching" << sep << fDoMcParticleClusterMatching << endl;
+    cout << prefix << setw(wlab) << "DoMcDescendantClusterMatching" << sep << fDoMcDescendantClusterMatching << endl;
+    cout << prefix << setw(wlab) << "DoSimChannelClusterMatching" << sep << fDoSimChannelClusterMatching << endl;
     cout << prefix << setw(wlab) << "TruthLabel" << sep << fTruthProducerLabel << endl;
     cout << prefix << setw(wlab) << "ParticleLabel" << sep << fParticleProducerLabel << endl;
     cout << prefix << setw(wlab) << "SimulationLabel" << sep << fSimulationProducerLabel << endl;
@@ -412,10 +401,28 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "HistUseDE" << sep << fhistusede << endl;
   }
 
+  if ( fdbg > 1 ) {
+    string prefix = myname + "  ";
+    cout << endl;
+    cout << myname << "Derived properties:" << endl;
+    cout << prefix << setw(wlab) << "DoMcParticles" << sep << fDoMcParticles << endl;
+    cout << prefix << setw(wlab) << "DoSimChannels" << sep << fDoSimChannels << endl;
+    cout << prefix << setw(wlab) << "DoRaw" << sep << fDoRaw << endl;
+    cout << prefix << setw(wlab) << "DoWires" << sep << fDoWires << endl;
+    cout << prefix << setw(wlab) << "DoHits" << sep << fDoHits << endl;
+    cout << prefix << setw(wlab) << "DoClusters" << sep << fDoClusters << endl;
+    cout << prefix << setw(wlab) << "DoMcParticleSelection" << sep << fDoMcParticleSelection << endl;
+    cout << prefix << setw(wlab) << "DoMcParticleSignalMaps" << sep << fDoMcParticleSignalMaps << endl;
+    cout << prefix << setw(wlab) << "DoMcDescendantSignalMaps" << sep << fDoMcDescendantSignalMaps << endl;
+    cout << prefix << setw(wlab) << "DoSimChannelSignalMaps" << sep << fDoSimChannelSignalMaps << endl;
+    cout << prefix << setw(wlab) << "DoClusterSignalMaps" << sep << fDoClusterSignalMaps << endl;
+  }
   cout << myname << endl;
+  fgeohelp = new GeoHelper(&*fGeometry, 0);
   cout << myname << "Summary from geometry helper:" << endl;
-  fgeohelp = new GeoHelper(&*fGeometry, 1);
   fgeohelp->print(cout, 0, myname);
+  // Geometry dump from Michelle.
+  if ( fdbg > 4 ) fgeohelp->dump(cout);
   return;
 }
 
@@ -426,8 +433,8 @@ void LbTupler::analyze(const art::Event& event) {
 
   // Access ART's TFileService, which will handle creating and writing
   // histograms and trees.
-  art::ServiceHandle<art::TFileService> tfs;
-  art::TFileService* ptfs = &*tfs;
+  art::ServiceHandle<art::TFileService> tfsHandle;
+  art::TFileService* ptfs = &*tfsHandle;
 
   // Start by fetching some basic event information for trees and histogram labels.
   fevent  = event.id().event(); 
@@ -436,7 +443,7 @@ void LbTupler::analyze(const art::Event& event) {
   if ( fdbg > 0 ) cout << myname << "Processing run " << fRun << "-" << fSubRun
                        << ", event " << fevent << endl;
 
-  // Create string representation of the event number.
+  // Create string representations of the event number.
   ostringstream ssevt;
   ssevt << fevent;
   string sevt = ssevt.str();
@@ -446,7 +453,7 @@ void LbTupler::analyze(const art::Event& event) {
   // Create directory for event-level histograms.
   art::TFileDirectory htfs = ptfs->mkdir("event" + sevt);
 
-  // Channel-tick histogram for the simulation data products.
+  // Channel-tick histogram creators for the simulation data products.
   ChannelTickHistCreator hcreateSim(htfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 1.0, 20);
   ChannelTickHistCreator hcreateSimPeak(htfs, sevt, ftdcTickMin, ftdcTickMax, "Energy [MeV]", 0, 5.0, 20);
 
@@ -489,206 +496,231 @@ void LbTupler::analyze(const art::Event& event) {
   // MC particles
   //************************************************************************
 
-  // Get all the MC particles for the event.
-  art::Handle< vector<MCParticle> > particleHandle;
-  if ( fDoMCParticles || fDoMcTpcSignalMap ) {
-    event.getByLabel(fParticleProducerLabel, particleHandle);
-    if ( fdbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
-  }
-
-  // Initialize the trajectory follower for this event.
-  if ( int rstatmc = m_pmctrajmc->beginEvent(event, *particleHandle) ) {
-    cout << myname << "ERROR: Trajectory begin event returned " << rstatmc << endl;
-    return;
-  }
-  if ( int rstatmd = m_pmctrajmd->beginEvent(event, *particleHandle) ) {
-    cout << myname << "ERROR: Trajectory begin event returned " << rstatmd << endl;
-    return;
-  }
-
-  // Create vector of selected MC particles for analysis.
-  // Note that descendants typically adds nothing. The descendants are not saved for showers.
-  // Use the SimChannel map to see showers.
+  // Vectors of signal maps.
   TpcSignalMapVector selectedMcTpcSignalMapsMC;    // Filled with MCParticle hits.
   TpcSignalMapVector selectedMcTpcSignalMapsMD;    // Filled with MCParticle and descendant hits.
   TpcSignalMapVector selectedMcTpcSignalMapsSC;    // Filled with SimChannel.
-  ParticleMap pars;   // Particle map indexed by trackid so we can find ancestors.
-  IndexVectorMap descendants;   // Particle descendant vector indexed by trackid.
-  if ( fDoMcTpcSignalMap ) {
-    if ( fdbg > 1 ) cout << myname << "Selecting MC particles." << endl;
-    for ( auto const& particle : (*particleHandle) ) {
-      int trackid = particle.TrackId();
-      pars[trackid] = &particle;
-      int rpdg = reducedPDG(particle.PdgCode());
-      int proc = intProcess(particle.Process());
-      // Select particles.
-      // 21apr2015: Keep also gammas
-      // 08jul2015: Keep also gamma from initial state pi0
-      // 089ul2015: Keep all with PROC=0 except pi0
-      bool pi0gamma = false;  // True iff this is a pi0 from an initial-state pi0
-      if ( rpdg == 6 && proc == 1 ) {
-        int itrkmom = particle.Mother();
-        ParticleMap::const_iterator iparmom = pars.find(itrkmom);
-        if ( iparmom != pars.end() ) {
-          const MCParticle& parmom = *iparmom->second;
-          int procmom = intProcess(parmom.Process());
-          int pdgmom = parmom.PdgCode();
-          pi0gamma = pdgmom == 111 && procmom == 0;
-          if ( fdbg > 2 ) {
-            cout << myname << "Checked pi0 gamma: parent " << itrkmom << " has proc=" << proc
-                 << " and pdg=" << pdgmom << " ==> select=" << pi0gamma << endl;
+  TpcSignalMapVector selectedMcTpcSignalMapsMCbyROP;
+  TpcSignalMapVector selectedMcTpcSignalMapsMDbyROP;
+
+  // Particle descendant vector indexed by trackid.
+  IndexVectorMap descendants;
+
+  // Get all the MC particles for the event.
+  art::Handle< vector<MCParticle> > particleHandle;
+  if ( fDoMcParticles ) {
+    event.getByLabel(fParticleProducerLabel, particleHandle);
+    if ( fdbg > 1 ) cout << myname << "MCParticle count: " << particleHandle->size() << endl;
+
+    // Initialize the trajectory follower for this event.
+    if ( int rstatmc = m_pmctrajmc->beginEvent(event, *particleHandle) ) {
+      cout << myname << "ERROR: Trajectory begin event returned " << rstatmc << endl;
+      return;
+    }
+    if ( int rstatmd = m_pmctrajmd->beginEvent(event, *particleHandle) ) {
+      cout << myname << "ERROR: Trajectory begin event returned " << rstatmd << endl;
+      return;
+    }
+
+    // Create vector of selected MC particles for analysis.
+    // Note that descendants typically adds nothing. The descendants are not saved for showers.
+    // Use the SimChannel map to see showers.
+    ParticleMap pars;   // Particle map indexed by trackid so we can find ancestors.
+    if ( fDoMcParticleSelection ) {
+      if ( fdbg > 1 ) cout << myname << "Selecting MC particles." << endl;
+      for ( auto const& particle : (*particleHandle) ) {
+        int trackid = particle.TrackId();
+        pars[trackid] = &particle;
+        int rpdg = reducedPDG(particle.PdgCode());
+        int proc = intProcess(particle.Process());
+        // Select particles.
+        // 21apr2015: Keep also gammas
+        // 08jul2015: Keep also gamma from initial state pi0
+        // 089ul2015: Keep all with PROC=0 except pi0
+        bool pi0gamma = false;  // True iff this is a pi0 from an initial-state pi0
+        if ( rpdg == 6 && proc == 1 ) {
+          int itrkmom = particle.Mother();
+          ParticleMap::const_iterator iparmom = pars.find(itrkmom);
+          if ( iparmom != pars.end() ) {
+            const MCParticle& parmom = *iparmom->second;
+            int procmom = intProcess(parmom.Process());
+            int pdgmom = parmom.PdgCode();
+            pi0gamma = pdgmom == 111 && procmom == 0;
+            if ( fdbg > 2 ) {
+              cout << myname << "Checked pi0 gamma: parent " << itrkmom << " has proc=" << proc
+                   << " and pdg=" << pdgmom << " ==> select=" << pi0gamma << endl;
+            }
+          } else {
+            cout << myname << "WARNING: Parent missing in particle map." << endl;
+          }
+        }
+        // Select initial-state particles.
+        bool select = proc == 0;
+        // Except, use decay gammas for pi0.
+        if ( fUseGammaNotPi0 ) {
+          if ( rpdg == 9 ) select = false;
+          else select |= pi0gamma;
+        }
+        if ( select ) {
+          // Create an McParticle map to decide if this particle is selected.
+          ostringstream ssnam;
+          ssnam << "mcp";
+          if ( trackid < 100 ) ssnam << 0;
+          if ( trackid < 10 ) ssnam << 0;
+          ssnam << trackid;
+          bool usetpc = true;
+          TpcSignalMapPtr pmctpmc(new TpcSignalMap(ssnam.str(), *&particle, fgeohelp, usetpc));
+          int keepstat = m_pmctrajmc->addMCParticle(particle, pmctpmc.get(), false);
+          // Keep tracks inside detector.
+          if ( keepstat == 0 ) {
+            string snam = ssnam.str();
+            if ( fDoMcParticleSignalMaps ) {
+              pmctpmc->buildHits();
+              selectedMcTpcSignalMapsMC.push_back(pmctpmc);
+            }
+            TpcSignalMapPtr pmctpmd;
+            if ( fDoMcDescendantSignalMaps ) {
+              snam[2] = 'd';  // Use "mcd" instead of "mcp" for map with descendants
+              pmctpmd.reset(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
+              m_pmctrajmd->addMCParticle(particle, pmctpmd.get(), true, &descendants[trackid]);
+              pmctpmd->buildHits();
+              selectedMcTpcSignalMapsMD.push_back(pmctpmd);
+            }
+            if ( fDoSimChannelSignalMaps ) {
+              snam[2] = 's';  // Use "mcs" instead of "mcp" for SimHits.
+              TpcSignalMapPtr pmctpsc(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
+              selectedMcTpcSignalMapsSC.push_back(pmctpsc);
+              if ( fDoMcDescendantSignalMaps ) pmctpsc->copySegments(*pmctpmd);
+            }
+            if ( fdbg > 1 ) cout << myname << "  Selected";
+          } else {
+            if ( fdbg > 1 ) cout << myname << "  Dropped ";
           }
         } else {
-          cout << myname << "WARNING: Parent missing in particle map." << endl;
+          if ( fdbg > 1 ) cout << myname << "  Rejected";
+        }
+        if ( fdbg > 1 ) {
+          cout << " MC particle " << setw(6) << trackid  << " with"
+               << " PDG=" << setw(10) << particle.PdgCode()
+               << " RPDG=" << setw(2) << rpdg
+               << " Status=" << setw(2) << particle.StatusCode()
+               << " PROC=" << setw(2) << proc
+               << " parent=" << setw(3) << particle.Mother()
+               << " nchild=" << setw(3) << particle.NumberDaughters()
+               << " at (" << setw(3) << int(particle.Vx())
+               <<    ", " << setw(3) << int(particle.Vy())
+               <<    ", " << setw(3) << int(particle.Vz()) << ") cm";
+          double efac = 1000.0;
+          if ( abs(rpdg)==3 || rpdg==7 || rpdg==11 ) {
+            cout << " Ekin=" << setw(5) << int(efac*(particle.E() - particle.Mass()));
+          } else {
+            cout << " Etot=" << setw(5) << int(efac*particle.E());
+          }
+          cout << " MeV";
+          cout << endl;
         }
       }
-      // Select initial-state particles.
-      bool select = proc == 0;
-      // Except, use decay gammas for pi0.
-      if ( fUseGammaNotPi0 ) {
-        if ( rpdg == 9 ) select = false;
-        else select |= pi0gamma;
+      // Display the MC particle signal maps.
+      int flag = 0;
+      if ( fdbg > 2 ) flag = 11;
+      if ( fDoMcParticleSignalMaps ) {
+        if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle signal maps (size = "
+                             << selectedMcTpcSignalMapsMC.size() << "):" << endl;
+        for ( auto pmctp : selectedMcTpcSignalMapsMC ) {
+          pmctp->print(cout, flag, myname + "  ");
+        }  // End loop over selected MC tracks
       }
-      if ( select ) {
-        // Add selected track to the MCParticle performance list.
-        ostringstream ssnam;
-        ssnam << "mcp";
-        if ( trackid < 100 ) ssnam << 0;
-        if ( trackid < 10 ) ssnam << 0;
-        ssnam << trackid;
-        bool usetpc = true;
-        TpcSignalMapPtr pmctpmc(new TpcSignalMap(ssnam.str(), *&particle, fgeohelp, usetpc));
-        // Fill the MC performance information including signal map.
-        // This also selects particles.
-        int keepstat = m_pmctrajmc->addMCParticle(particle, pmctpmc.get(), false);
-        // Keep tracks inside detector.
-        if ( keepstat == 0 ) {
-          string snam = ssnam.str();
-          snam[2] = 'd';  // Use "mcd" instead of "mcp" for map with descendants
-          TpcSignalMapPtr pmctpmd(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
-          m_pmctrajmd->addMCParticle(particle, pmctpmd.get(), true, &descendants[trackid]);
-          pmctpmc->buildHits();
-          pmctpmd->buildHits();
-          snam[2] = 's';  // Use "mcs" instead of "mcp" for SimHits.
-          TpcSignalMapPtr pmctpsc(new TpcSignalMap(snam, *&particle, fgeohelp, usetpc));
-          // Add selected track to the signal map lists.
-          selectedMcTpcSignalMapsMC.push_back(pmctpmc);
-          selectedMcTpcSignalMapsMD.push_back(pmctpmd);
-          selectedMcTpcSignalMapsSC.push_back(pmctpsc);
-          pmctpsc->copySegments(*pmctpmd);
-          if ( fdbg > 1 ) cout << myname << "  Selected";
-        } else {
-          if ( fdbg > 1 ) cout << myname << "  Dropped ";
-        }
-      } else {
-        if ( fdbg > 1 ) cout << myname << "  Rejected";
+      if ( fDoMcDescendantSignalMaps ) {
+        if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle plus descendant signal maps (size = "
+                             << selectedMcTpcSignalMapsMD.size() << "):" << endl;
+        for ( auto pmctp : selectedMcTpcSignalMapsMD ) {
+          pmctp->print(cout, flag, myname + "  ");
+        }  // End loop over selected MC tracks
       }
-      if ( fdbg > 1 ) {
-        cout << " MC particle " << setw(6) << trackid  << " with"
-             << " PDG=" << setw(10) << particle.PdgCode()
-             << " RPDG=" << setw(2) << rpdg
-             << " Status=" << setw(2) << particle.StatusCode()
-             << " PROC=" << setw(2) << proc
-             << " parent=" << setw(3) << particle.Mother()
-             << " nchild=" << setw(3) << particle.NumberDaughters()
-             << " at (" << setw(3) << int(particle.Vx())
-             <<    ", " << setw(3) << int(particle.Vy())
-             <<    ", " << setw(3) << int(particle.Vz()) << ") cm";
-        double efac = 1000.0;
-        if ( abs(rpdg)==3 || rpdg==7 || rpdg==11 ) {
-          cout << " Ekin=" << setw(5) << int(efac*(particle.E() - particle.Mass()));
-        } else {
-          cout << " Etot=" << setw(5) << int(efac*particle.E());
-        }
-        cout << " MeV";
-        cout << endl;
+    }  // end DoMcParticleSelection
+  
+    // Split the MC signal maps by ROP.
+    if ( fDoMcParticleSignalMaps ) {
+      for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMC ) {
+        ptsm->splitByRop(selectedMcTpcSignalMapsMCbyROP, true);
       }
-    }
-    // Display the MC particle signal maps.
-    int flag = 0;
-    if ( fdbg > 2 ) flag = 11;
-    if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle signal maps (size = "
-                         << selectedMcTpcSignalMapsMC.size() << "):" << endl;
-    for ( auto pmctp : selectedMcTpcSignalMapsMC ) {
-      pmctp->print(cout, flag, myname + "  ");
-    }  // End loop over selected MC tracks
-    if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle plus descendant signal maps (size = "
-                         << selectedMcTpcSignalMapsMD.size() << "):" << endl;
-    for ( auto pmctp : selectedMcTpcSignalMapsMD ) {
-      pmctp->print(cout, flag, myname + "  ");
-    }  // End loop over selected MC tracks
-  }  // end DoMcTpcSignalMap
+      if ( fdbg > 0 ) {
+        cout << myname << "Summary of selected MC particle by ROP maps (size = "
+             << selectedMcTpcSignalMapsMCbyROP.size() << "):" << endl;
+        for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) pmctp->print(cout, 0, myname + "  ");
+      }
+    }  // end DoMcParticleSignalMaps
 
-  // Split the MC signal maps by ROP.
-  TpcSignalMapVector selectedMcTpcSignalMapsMCbyROP;
-  for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMC ) {
-    ptsm->splitByRop(selectedMcTpcSignalMapsMCbyROP, true);
-  }
-  if ( fdbg > 0 ) {
-    cout << myname << "Summary of selected MC particle by ROP maps (size = "
-         << selectedMcTpcSignalMapsMCbyROP.size() << "):" << endl;
-    for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) pmctp->print(cout, 0, myname + "  ");
-  }
-
-  // Split the MD signal maps by ROP.
-  TpcSignalMapVector selectedMcTpcSignalMapsMDbyROP;
-  for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMD ) {
-    ptsm->splitByRop(selectedMcTpcSignalMapsMDbyROP, true);
-  }
-  if ( fdbg > 0 ) {
-    cout << myname << "Summary of selected MD particle by ROP maps (size = "
-         << selectedMcTpcSignalMapsMDbyROP.size() << "):" << endl;
-    for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) pmctp->print(cout, 0, myname + "  ");
-  }
-
-  // MCParticles histograms and tree.
-  if ( fDoMCParticles ) {
-
+    // Split the MD signal maps by ROP.
+    if ( fDoMcDescendantSignalMaps ) {
+      for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsMD ) {
+        ptsm->splitByRop(selectedMcTpcSignalMapsMDbyROP, true);
+      }
+      if ( fdbg > 0 ) {
+        cout << myname << "Summary of selected MD particle by ROP maps (size = "
+             << selectedMcTpcSignalMapsMDbyROP.size() << "):" << endl;
+        for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) pmctp->print(cout, 0, myname + "  ");
+      }
+    }  // end DoMcDescendantSignalMaps
+  
     // Create the event channel-tick bin histograms for all selected MC particles.
-    if ( fdbg > 1 ) cout << myname << "Create and fill MCParticle histograms for all selected tracks." << endl;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateSim.create("mcp" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                      "MC particle signals for " + geohelp.ropName(irop));
-      for ( auto pmctp : selectedMcTpcSignalMapsMC ) pmctp->fillRopChannelTickHist(ph, irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+    if ( fDoMcParticleSignalHists ) {
+      if ( fdbg > 1 ) cout << myname << "Create and fill MC particle histograms for all selected tracks." << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hcreateSim.create("mcp" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                        "MC particle signals for " + geohelp.ropName(irop));
+        for ( auto pmctp : selectedMcTpcSignalMapsMC ) pmctp->fillRopChannelTickHist(ph, irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+      }
     }
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateSim.create("mcd" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                        "MC par+desc signals for " + geohelp.ropName(irop));
-      for ( auto pmctp : selectedMcTpcSignalMapsMD ) pmctp->fillRopChannelTickHist(ph, irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+
+    // Create the event channel-tick bin histograms for all selected MC particles with descendants.
+    if ( fDoMcDescendantSignalHists ) {
+      if ( fdbg > 1 ) cout << myname << "Create and fill MC descendant histograms for all selected tracks." << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hcreateSim.create("mcd" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                          "MC par+desc signals for " + geohelp.ropName(irop));
+        for ( auto pmctp : selectedMcTpcSignalMapsMD ) pmctp->fillRopChannelTickHist(ph, irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+      }
     }
 
     // Create the channel-tick bin histograms for each selected MC particle by ROP.
-    if ( fdbg > 1 ) cout << myname << "Create and fill MCParticle histograms for each selected track." << endl;
-    for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) {
-      ostringstream ssmcp;
-      ssmcp << pmctp->mcinfo()->trackID;
-      string smcp = ssmcp.str();
-      Index irop = pmctp->rop();
-      TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
-                                      "MC particle signals for " + geohelp.ropName(irop),
-                                      "", "particle " + smcp, pmctp->tickRange());
-      if ( ph != nullptr ) {
-        pmctp->fillRopChannelTickHist(ph, irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+    if ( fDoMcParticleSignalHists ) {
+      if ( fdbg > 1 ) cout << myname << "Create and fill MC particle histograms for each selected track." << endl;
+      for ( auto pmctp : selectedMcTpcSignalMapsMCbyROP ) {
+        ostringstream ssmcp;
+        ssmcp << pmctp->mcinfo()->trackID;
+        string smcp = ssmcp.str();
+        Index irop = pmctp->rop();
+        TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
+                                        "MC particle signals for " + geohelp.ropName(irop),
+                                        "", "particle " + smcp, pmctp->tickRange());
+        if ( ph != nullptr ) {
+          pmctp->fillRopChannelTickHist(ph, irop);
+          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+        }
       }
     }
-    for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) {
-      ostringstream ssmcd;
-      ssmcd << pmctp->mcinfo()->trackID;
-      string smcd = ssmcd.str();
-      Index irop = pmctp->rop();
-      TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
-                                  "MD particle signals for " + geohelp.ropName(irop),
-                                  "", "particle " + smcd, pmctp->tickRange());
-      if ( ph != nullptr ) {
-        pmctp->fillRopChannelTickHist(ph, irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
-      }
-    }  // End loop over selected MC particles by ROP
 
-  }  // end Do MCParticle
+    if ( fDoMcDescendantSignalHists ) {
+      if ( fdbg > 1 ) cout << myname << "Create and fill MC descendant histograms for each selected track." << endl;
+      for ( auto pmctp : selectedMcTpcSignalMapsMDbyROP ) {
+        ostringstream ssmcd;
+        ssmcd << pmctp->mcinfo()->trackID;
+        string smcd = ssmcd.str();
+          Index irop = pmctp->rop();
+          TH2* ph = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
+                                    "MD particle signals for " + geohelp.ropName(irop),
+                                    "", "particle " + smcd, pmctp->tickRange());
+        if ( ph != nullptr ) {
+          pmctp->fillRopChannelTickHist(ph, irop);
+          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+8, 4, 4);
+        }
+      }  // End loop over selected MC particles by ROP
+    }
+
+  }  // end DoMcParticles
 
   //************************************************************************
   // Sim channels.
@@ -700,10 +732,8 @@ void LbTupler::analyze(const art::Event& event) {
     // Get all the simulated channels for the event. These channels
     // include the energy deposited for each track.
     art::Handle<vector<sim::SimChannel>> simChannelHandle;
-    if ( fDoMCParticles || fDoSimChannels || fDoMcTpcSignalMap ) {
-      event.getByLabel(fSimulationProducerLabel, simChannelHandle);
-      if ( fdbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
-    }
+    event.getByLabel(fSimulationProducerLabel, simChannelHandle);
+    if ( fdbg > 1 ) cout << myname << "Sim channel count: " << simChannelHandle->size() << endl;
 
     // Check array sizes.
     if ( simChannelHandle->size() > fscCapacity ) {
@@ -717,8 +747,8 @@ void LbTupler::analyze(const art::Event& event) {
    
     // Add sim channel info and hits to the sim channel signal maps.
     // We should but don't include contributions from descendants, e.g. mu->e.
-    if ( fDoMcTpcSignalMap ) {
-      if ( fdbg > 0 ) cout << myname << "Adding sim channels and hits to SimChannel performance objects (size = "
+    if ( fDoSimChannelSignalMaps ) {
+      if ( fdbg > 0 ) cout << myname << "Adding sim channels and hits to SimChannel signal maps (size = "
                           << simChannelHandle->size() << ")" << endl;
 
       // Add SimChannels to the complete signal map.
@@ -730,7 +760,7 @@ void LbTupler::analyze(const art::Event& event) {
       // Split the complete SimChannel signal map by ROP.
       ptpsim->splitByRop(tpsimByRop, true);
 
-      // Add SimChannels to selected-track signal maps.
+      // Add SimChannels to selected-track SimChannel signal maps.
       for ( auto pmctp : selectedMcTpcSignalMapsSC ) {
         // Add the sim channel info to the selected tracks.
         for ( auto const& simchan : (*simChannelHandle) ) {
@@ -740,12 +770,12 @@ void LbTupler::analyze(const art::Event& event) {
         pmctp->buildHits();
       }  // End loop over selected SimChannel MC tracks
 
-      // Split the selected-track signal maps by ROP.
+      // Split the selected-track SimChannel signal maps by ROP.
       for ( const TpcSignalMapPtr& ptsm : selectedMcTpcSignalMapsSC ) {
         ptsm->splitByRop(selectedMcTpcSignalMapsSCbyROP, true);
       }  
 
-      // Display the selected track performance objects.
+      // Display the selected-track SimChannel signal maps.
       int flag = 0;
       if ( fdbg > 2 ) flag = 11;
       if ( fdbg > 0 ) {
@@ -768,78 +798,81 @@ void LbTupler::analyze(const art::Event& event) {
         }  // End loop over signal maps
       }  // End dbg
 
-    }  // end DoMcTpcSignalMap
+    }  // end DoMcTpcSignalMaps
 
     // Create the Sim channel histograms:
     // one for each plane with all sim hits
     // one for each plane with all selected particles.
     // and one for each plane and selected particle.
-
-    // All sim hits.
-    vector<TH2*> spahists;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                  "Sim channels for " + geohelp.ropName(irop));
-      spahists.push_back(ph);
-      for ( const auto pmctp : tpsimByRop ) {
-        if ( pmctp->ropNbin(irop) == 0 ) continue;
-        pmctp->fillRopChannelTickHist(ph, irop);
-      }
-    }
-    // Display the contents of each SimChannel histogram.
-    if ( fdbg > 1 ) {
-      cout << myname << "Summary of complete SimChannel histograms:" << endl;
+    if ( fDoSimChannelSignalHists ) {
+  
+      // All sim hits.
+      vector<TH2*> spahists;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        summarize2dHist(spahists[irop], myname, wnam, 4, 4);
+        TH2* ph = hcreateSim.create("sim" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                    "Sim channels for " + geohelp.ropName(irop));
+        spahists.push_back(ph);
+        for ( const auto pmctp : tpsimByRop ) {
+          if ( pmctp->ropNbin(irop) == 0 ) continue;
+          pmctp->fillRopChannelTickHist(ph, irop);
+        }
       }
-    }
-
-    // All selected particles.
-    vector<TH2*> sphists;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateSim.create("ssi" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                  "Sim channels for " + geohelp.ropName(irop));
-      sphists.push_back(ph);
-      for ( const auto pmctp : selectedMcTpcSignalMapsSC ) {
-        if ( pmctp->ropNbin(irop) == 0 ) continue;
-        pmctp->fillRopChannelTickHist(ph, irop);
+      // Display the contents of each SimChannel histogram.
+      if ( fdbg > 1 ) {
+        cout << myname << "Summary of complete SimChannel histograms:" << endl;
+        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+          summarize2dHist(spahists[irop], myname, wnam, 4, 4);
+        }
       }
-    }
-    // Display the contents of each SimChannel histogram.
-    if ( fdbg > 1 ) {
-      cout << myname << "Summary of SimChannel histograms for all selected particles:" << endl;
+  
+      // All selected particles.
+      vector<TH2*> sphists;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        summarize2dHist(sphists[irop], myname, wnam, 4, 4);
+        TH2* ph = hcreateSim.create("ssi" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                    "Sim channels for " + geohelp.ropName(irop));
+        sphists.push_back(ph);
+        for ( const auto pmctp : selectedMcTpcSignalMapsSC ) {
+          if ( pmctp->ropNbin(irop) == 0 ) continue;
+          pmctp->fillRopChannelTickHist(ph, irop);
+        }
       }
-    }
-
-    // Create the Sim channel histograms: one for each plane and selected particle.
-    cout << myname << "Summary of SimChannel histograms for each selected particle:" << endl;
-    for ( const auto pmctp : selectedMcTpcSignalMapsSCbyROP ) {
-      unsigned int itrk = pmctp->mcinfo()->trackID;
-      ostringstream sstrk;
-      sstrk << itrk;
-      string strk = sstrk.str();
-      Index irop = pmctp->rop();
-      TH2* pht = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
-                                   "Sim channels for " + geohelp.ropName(irop),
-                                   "", "MC particle " + strk, pmctp->tickRange());
-      if ( pht != nullptr ) {
-        pmctp->fillRopChannelTickHist(pht, irop);
-        summarize2dHist(pht, myname, wnam+8, 4, 4);
+      // Display the contents of each SimChannel histogram.
+      if ( fdbg > 1 ) {
+        cout << myname << "Summary of SimChannel histograms for all selected particles:" << endl;
+        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+          summarize2dHist(sphists[irop], myname, wnam, 4, 4);
+        }
       }
-    }
+  
+      // Create the Sim channel histograms: one for each plane and selected particle.
+      cout << myname << "Summary of SimChannel histograms for each selected particle:" << endl;
+      for ( const auto pmctp : selectedMcTpcSignalMapsSCbyROP ) {
+        unsigned int itrk = pmctp->mcinfo()->trackID;
+        ostringstream sstrk;
+        sstrk << itrk;
+        string strk = sstrk.str();
+        Index irop = pmctp->rop();
+        TH2* pht = hcreateSim.create(pmctp->name(), 0, geohelp.ropNChannel(irop),
+                                     "Sim channels for " + geohelp.ropName(irop),
+                                     "", "MC particle " + strk, pmctp->tickRange());
+        if ( pht != nullptr ) {
+          pmctp->fillRopChannelTickHist(pht, irop);
+          summarize2dHist(pht, myname, wnam+8, 4, 4);
+        }
+      }
+  
+    }  // end DoSimChannelSignalHists
 
     // Fill tree.
     if ( fDoSimChannelTree ) {
-      m_sctupler->fill(event, *simChannelHandle);
       if ( fdbg > 1 ) cout << myname << "Filling SimChannel tree." << endl;
+      m_sctupler->fill(event, *simChannelHandle);
     }
 
   }  // end DoSimChannel
 
   // Display the signal maps.
-  if ( fDoMcTpcSignalMap && fdbg > 2 ) {
+  if ( fDoSimChannelSignalMaps && fdbg > 2 ) {
     for ( unsigned int imcs=0; imcs<selectedMcTpcSignalMapsSC.size(); ++imcs ) {
       const auto mctsc = *selectedMcTpcSignalMapsSC.at(imcs);
       const auto mctmc = *selectedMcTpcSignalMapsMC.at(imcs);
@@ -856,7 +889,7 @@ void LbTupler::analyze(const art::Event& event) {
       mctmc.print(cout,  0, myname + "  ");
       mctmc.print(cout, 11, myname + "  ");
     }  // End loop over selected MC tracks
-  }  // end DoMcTpcSignalMap
+  }  // end DoMcTpcSignalMaps
 
   //************************************************************************
   // Raw digits.
@@ -869,43 +902,45 @@ void LbTupler::analyze(const art::Event& event) {
     if ( fdbg > 1 ) cout << myname << "Raw channel count: " << rawDigitHandle->size() << endl;
 
     // Create the Raw digit histograms.
-    vector<TH2*> rawhists;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateRecoNeg.create("raw" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                   "Raw signals for " + geohelp.ropName(irop));
-      rawhists.push_back(ph);
-    }
-
-    for ( auto const& digit : (*rawDigitHandle) ) {
-      int ichan = digit.Channel();
-      unsigned int irop = geohelp.channelRop(ichan);
-      TH2* ph = rawhists[irop];
-      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
-      int nadc = digit.NADC();
-      vector<short> adcs;
-      raw::Uncompress(digit.ADCs(), adcs, digit.Compression());
-      unsigned int nzero = 0;
-      for ( auto adc : adcs ) if ( adc == 0.0 ) ++nzero;
-      if ( fdbg > 3 ) cout << myname << "Digit channel " << ichan
-                          << " (ROP-chan = " << irop << "-" << iropchan
-                          << ") has " << nadc << " ADCs and "
-                          << digit.Samples() << " samples. Uncompressed size is " << adcs.size()
-                          << ". Number filled is " << adcs.size()-nzero << endl;
-      for ( unsigned int tick=0; tick<adcs.size(); ++tick ) {
-        double wt = adcs[tick];
-        if ( wt == 0 ) continue;
-        if ( fhistusede ) wt *= adc2de(ichan);
-        ph->Fill(tick, iropchan, wt);
-      }
-    }
-
-    // Display the contents of each raw data histogram.
-    if ( fdbg > 1 ) {
-      cout << myname << "Summary of raw data histograms:" << endl;
+    if ( fDoRawSignalHists ) {
+      vector<TH2*> rawhists;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        summarize2dHist(rawhists[irop], myname, wnam, 4, 7);
+        TH2* ph = hcreateRecoNeg.create("raw" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                     "Raw signals for " + geohelp.ropName(irop));
+        rawhists.push_back(ph);
       }
-    }
+  
+      for ( auto const& digit : (*rawDigitHandle) ) {
+        int ichan = digit.Channel();
+        unsigned int irop = geohelp.channelRop(ichan);
+        TH2* ph = rawhists[irop];
+        unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
+        int nadc = digit.NADC();
+        vector<short> adcs;
+        raw::Uncompress(digit.ADCs(), adcs, digit.Compression());
+        unsigned int nzero = 0;
+        for ( auto adc : adcs ) if ( adc == 0.0 ) ++nzero;
+        if ( fdbg > 3 ) cout << myname << "Digit channel " << ichan
+                            << " (ROP-chan = " << irop << "-" << iropchan
+                            << ") has " << nadc << " ADCs and "
+                            << digit.Samples() << " samples. Uncompressed size is " << adcs.size()
+                            << ". Number filled is " << adcs.size()-nzero << endl;
+        for ( unsigned int tick=0; tick<adcs.size(); ++tick ) {
+          double wt = adcs[tick];
+          if ( wt == 0 ) continue;
+          if ( fhistusede ) wt *= adc2de(ichan);
+          ph->Fill(tick, iropchan, wt);
+        }
+      }
+
+      // Display the contents of each raw data histogram.
+      if ( fdbg > 1 ) {
+        cout << myname << "Summary of raw data histograms:" << endl;
+        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+          summarize2dHist(rawhists[irop], myname, wnam, 4, 7);
+        }
+      }
+    }  // end DoRawSignalHists
 
   }  // end DoRawDigit
 
@@ -919,42 +954,44 @@ void LbTupler::analyze(const art::Event& event) {
     event.getByLabel(fWireProducerLabel, wiresHandle);
     if ( fdbg > 1 ) cout << myname << "Deconvoluted channel count: " << wiresHandle->size() << endl;
 
-    // Create the wire histograms.
-    vector<TH2*> dcohists;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateReco.create("dco" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                   "Deconvoluted signals for " + geohelp.ropName(irop));
-      dcohists.push_back(ph);
-    }
-
-    for ( auto const& wire : (*wiresHandle) ) {
-      int ichan = wire.Channel();
-      unsigned int irop = geohelp.channelRop(ichan);
-      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
-      auto sigs = wire.Signal();
-      const auto& roisigs = wire.SignalROI();
-      TH2* ph = dcohists[irop];
-      if ( fdbg > 3 ) cout << myname << "Deconvoluted channel " << ichan
-                          << " (ROP-chan = " << irop << "-" << iropchan << ")"
-                          << " with view " << wire.View()
-                          << " has " << sigs.size() << " signals"
-                          << " and " << roisigs.size() << " ROIs"
-                          << "." << endl;
-      for ( unsigned int tick=0; tick<sigs.size(); ++tick ) {
-        double wt = roisigs[tick];
-        if ( wt == 0 ) continue;
-        if ( fhistusede ) wt *= adc2de(ichan);
-        ph->Fill(tick, iropchan, wt);
-      }
-    }
-
-    // Display the contents of each deconvoluted signal histogram.
-    if ( fdbg > 1 ) {
-      cout << myname << "Summary of deconvoluted data histograms:" << endl;
+    // Create the deconvoluted signal histograms.
+    if ( fDoDeconvolutedSignalHists ) {
+      vector<TH2*> dcohists;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        summarize2dHist(dcohists[irop], myname, wnam, 4, 7);
+        TH2* ph = hcreateReco.create("dco" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                     "Deconvoluted signals for " + geohelp.ropName(irop));
+        dcohists.push_back(ph);
       }
-    }
+
+      for ( auto const& wire : (*wiresHandle) ) {
+        int ichan = wire.Channel();
+        unsigned int irop = geohelp.channelRop(ichan);
+        unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
+        auto sigs = wire.Signal();
+        const auto& roisigs = wire.SignalROI();
+        TH2* ph = dcohists[irop];
+        if ( fdbg > 3 ) cout << myname << "Deconvoluted channel " << ichan
+                            << " (ROP-chan = " << irop << "-" << iropchan << ")"
+                            << " with view " << wire.View()
+                            << " has " << sigs.size() << " signals"
+                            << " and " << roisigs.size() << " ROIs"
+                            << "." << endl;
+        for ( unsigned int tick=0; tick<sigs.size(); ++tick ) {
+          double wt = roisigs[tick];
+          if ( wt == 0 ) continue;
+          if ( fhistusede ) wt *= adc2de(ichan);
+          ph->Fill(tick, iropchan, wt);
+        }
+      }
+
+      // Display the contents of each deconvoluted signal histogram.
+      if ( fdbg > 1 ) {
+        cout << myname << "Summary of deconvoluted data histograms:" << endl;
+        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+          summarize2dHist(dcohists[irop], myname, wnam, 4, 7);
+        }
+      }
+    }  // end DoDeconvolutedSignalHists
 
   }  // end DoWires
 
@@ -970,63 +1007,66 @@ void LbTupler::analyze(const art::Event& event) {
     if ( fdbg > 1 ) cout << myname << "Hit count: " << hitsHandle->size() << endl;
 
     // Create the hit histograms.
-    vector<TH2*> hithists;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateRecoPeak.create("hip" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                       "Hit peaks for " + geohelp.ropName(irop));
-      hithists.push_back(ph);
-    }
+    if ( fDoHitSignalHists ) {
+      vector<TH2*> hithists;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hcreateRecoPeak.create("hip" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                         "Hit peaks for " + geohelp.ropName(irop));
+        hithists.push_back(ph);
+      }
 
-    for ( auto const& hit : (*hitsHandle) ) {
-      int ichan = hit.Channel();
-      unsigned int irop = geohelp.channelRop(ichan);
-      unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
-      TH2* ph = hithists[irop];
-      if ( fdbg > 3 ) cout << myname << "Hit channel " << ichan
-                          << " (ROP-chan = " << irop << "-" << iropchan << ")"
-                          << " with view " << hit.View()
-                          << " has charge " << hit.SummedADC() 
-                          << " at TDC " << hit.PeakTime()
-                          << "." << endl;
-      double wt = hit.SummedADC();
-      if ( wt == 0 ) continue;
-      if ( fhistusede ) wt *= adc2de(ichan);
-      if ( fdbg > 3 ) cout << myname << "    Hit histo " << ph->GetName() << " time/channel/wt = "
-                           << hit.PeakTime() << "/" << iropchan << "/" << wt << endl;
-      ph->Fill(hit.PeakTime(), iropchan, wt);
-    }
+      for ( auto const& hit : (*hitsHandle) ) {
+        int ichan = hit.Channel();
+        unsigned int irop = geohelp.channelRop(ichan);
+        unsigned int iropchan = ichan - geohelp.ropFirstChannel(irop);
+        TH2* ph = hithists[irop];
+        if ( fdbg > 3 ) cout << myname << "Hit channel " << ichan
+                            << " (ROP-chan = " << irop << "-" << iropchan << ")"
+                            << " with view " << hit.View()
+                            << " has charge " << hit.SummedADC() 
+                            << " at TDC " << hit.PeakTime()
+                            << "." << endl;
+        double wt = hit.SummedADC();
+        if ( wt == 0 ) continue;
+        if ( fhistusede ) wt *= adc2de(ichan);
+        if ( fdbg > 3 ) cout << myname << "    Hit histo " << ph->GetName() << " time/channel/wt = "
+                             << hit.PeakTime() << "/" << iropchan << "/" << wt << endl;
+        ph->Fill(hit.PeakTime(), iropchan, wt);
+      }
 
-    if ( fdbg > 1 ) cout << myname << "Summary of hit peak histograms:" << endl;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hithists[irop];
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
-    }
+      if ( fdbg > 1 ) cout << myname << "Summary of hit peak histograms:" << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hithists[irop];
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
+      }
 
-    // Put all hits into a signal map.
-    TpcSignalMap hitsSignalMap("allhits", fgeohelp);
-    for ( auto const& hit : (*hitsHandle) ) {
-      hitsSignalMap.addHit(hit, 0);
-    }
+      // Put all hits into a signal map.
+      TpcSignalMap hitsSignalMap("allhits", fgeohelp);
+      for ( auto const& hit : (*hitsHandle) ) {
+        hitsSignalMap.addHit(hit, 0);
+      }
+  
+      // Display the hits performance
+      int flag = 0;
+      if ( fdbg > 2 ) flag = 1;
+      if ( fdbg > 0 ) {
+        cout << myname << "Summary of hit performance" << endl;
+        hitsSignalMap.print(cout, flag, myname + "  ");
+      }
 
-    // Display the hits performance
-    int flag = 0;
-    if ( fdbg > 2 ) flag = 1;
-    if ( fdbg > 0 ) {
-      cout << myname << "Summary of hit performance" << endl;
-      hitsSignalMap.print(cout, flag, myname + "  ");
-    }
+      // Create the new hit histograms.
+      TH2* phallhits = hcreateReco.create("hsgall", 0, fGeometry->Nchannels(), "Hits for ");
+      hitsSignalMap.fillChannelTickHist(phallhits);
+      if ( fdbg > 1 ) cout << myname << "Summary of hit histograms:" << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hcreateReco.create("hit" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                     "Hits for " + geohelp.ropName(irop));
+        hitsSignalMap.fillRopChannelTickHist(ph,irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
+      }
+      if ( fdbg > 1 ) summarize2dHist(phallhits, myname, wnam, 4, 7);
 
-    // Create the new hit histograms.
-    TH2* phallhits = hcreateReco.create("hsgall", 0, fGeometry->Nchannels(), "Hits for ");
-    hitsSignalMap.fillChannelTickHist(phallhits);
-    if ( fdbg > 1 ) cout << myname << "Summary of hit histograms:" << endl;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateReco.create("hit" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                   "Hits for " + geohelp.ropName(irop));
-      hitsSignalMap.fillRopChannelTickHist(ph,irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
-    }
-    if ( fdbg > 1 ) summarize2dHist(phallhits, myname, wnam, 4, 7);
+    }  // end DoHitSignalHists
 
   }  // end DoHits
 
@@ -1053,84 +1093,95 @@ void LbTupler::analyze(const art::Event& event) {
     // Create signal maps for all clusters and for each individual cluster.
     TpcSignalMap allClusterSignalMap("allclusters", &geohelp);
     TpcSignalMapVector clusterSignalMap;
-    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-      ostringstream ssnam;
-      ssnam << "clu";
-      if ( iclu < 100 ) ssnam << 0;
-      if ( iclu < 10 ) ssnam << 0;
-      ssnam << iclu;
-      clusterSignalMap.push_back(TpcSignalMapPtr(new TpcSignalMap(ssnam.str(), &geohelp)));
-    }
-    // Loop over clusters.
-    cout << myname << "Looping over clusters (size = " << clusters.size() << ")" << endl;
-    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-      art::Ptr<recob::Cluster> pclu = clusters[iclu];
-      Index irop = geohelp.rop(pclu->Plane());
-      std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
-      allClusterSignalMap.addCluster(hits);
-      clusterSignalMap[iclu]->addCluster(hits);
-      clusterSignalMap[iclu]->setRop(irop);
-    }
+    if ( fDoClusterSignalMaps ) {
+      for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+        ostringstream ssnam;
+        ssnam << "clu";
+        if ( iclu < 100 ) ssnam << 0;
+        if ( iclu < 10 ) ssnam << 0;
+        ssnam << iclu;
+        clusterSignalMap.push_back(TpcSignalMapPtr(new TpcSignalMap(ssnam.str(), &geohelp)));
+      }
+      // Loop over clusters.
+      cout << myname << "Looping over clusters (size = " << clusters.size() << ")" << endl;
+      for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+        art::Ptr<recob::Cluster> pclu = clusters[iclu];
+        Index irop = geohelp.rop(pclu->Plane());
+        std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
+        allClusterSignalMap.addCluster(hits);
+        clusterSignalMap[iclu]->addCluster(hits);
+        clusterSignalMap[iclu]->setRop(irop);
+      }
 
-    // Display the hits performance
-    int flag = fdbg > 2 ? 1 : 0;
-    if ( fdbg > 0 ) {
-      cout << myname << "Summary of hit performance" << endl;
+      // Display the cluster signal map.
+      int flag = fdbg > 2 ? 1 : 0;
+      if ( fdbg > 0 ) {
+        cout << myname << "Summary of cluster signal map" << endl;
+        for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+          ostringstream ssclu;
+          ssclu << setw(6) << iclu << ":";
+          clusterSignalMap[iclu]->print(cout, flag, myname + ssclu.str());
+        }
+        allClusterSignalMap.print(cout, flag, myname + "   all:");
+      }
+
+    }  // end DoClusterSignalMaps
+
+    if ( fDoClusterSignalHists ) {
+      // Create the channel-tick histograms for all clusters.
+      if ( fdbg > 1 ) cout << myname << "Summary of cluster hit histograms:" << endl;
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        TH2* ph = hcreateReco.create("clu" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                     "Cluster hits for " + geohelp.ropName(irop));
+        allClusterSignalMap.fillRopChannelTickHist(ph,irop);
+        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
+      }
+  
+      // Create the channel-tick histograms for each cluster.
+      if ( fdbg > 1 ) cout << myname << "Summary of per-cluster hit histograms:" << endl;
       for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
         ostringstream ssclu;
-        ssclu << setw(6) << iclu << ":";
-        clusterSignalMap[iclu]->print(cout, flag, myname + ssclu.str());
-      }
-      allClusterSignalMap.print(cout, flag, myname + "   all:");
-    }
-
-    // Create the channel-tick histograms for all clusters.
-    if ( fdbg > 1 ) cout << myname << "Summary of cluster hit histograms:" << endl;
-    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-      TH2* ph = hcreateReco.create("clu" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                   "Cluster hits for " + geohelp.ropName(irop));
-      allClusterSignalMap.fillRopChannelTickHist(ph,irop);
-      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
-    }
-
-    // Create the channel-tick histograms for each cluster.
-    if ( fdbg > 1 ) cout << myname << "Summary of per-cluster hit histograms:" << endl;
-    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-      ostringstream ssclu;
-      ssclu << iclu;
-      string sclu = ssclu.str();
-      TpcSignalMapPtr pch = clusterSignalMap[iclu];
-      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        if ( pch->ropNbin(irop) == 0 ) {
-          if ( fdbg > 2 ) cout << myname << "  Skipping " << irop << endl;
-          continue;
-        }
-        TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
-                                     "Cluster hits for " + geohelp.ropName(irop),
-                                     "", "cluster " + sclu, pch->tickRange());
-        if ( ph != nullptr ) {
-          pch->fillRopChannelTickHist(ph,irop);
-          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
+        ssclu << iclu;
+        string sclu = ssclu.str();
+        TpcSignalMapPtr pch = clusterSignalMap[iclu];
+        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+          if ( pch->ropNbin(irop) == 0 ) {
+            if ( fdbg > 2 ) cout << myname << "  Skipping " << irop << endl;
+            continue;
+          }
+          TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
+                                       "Cluster hits for " + geohelp.ropName(irop),
+                                       "", "cluster " + sclu, pch->tickRange());
+          if ( ph != nullptr ) {
+            pch->fillRopChannelTickHist(ph,irop);
+            if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
+          }
         }
       }
-    }
+    } // end DoClusterSignalHists
 
     // Evaluate the MC cluster-finding performance.
-    if ( fdbg > 1 ) cout << myname << "Matching MC and clusters." << endl;
-    TpcSignalMatcher clumatchmc(selectedMcTpcSignalMapsMCbyROP, clusterSignalMap, true, 0);
-    clumatchmc.print(cout, 0);
+    if ( fDoMcParticleClusterMatching ) {
+      if ( fdbg > 1 ) cout << myname << "Matching MC and clusters." << endl;
+      TpcSignalMatcher clumatchmc(selectedMcTpcSignalMapsMCbyROP, clusterSignalMap, true, 0);
+      clumatchmc.print(cout, 0);
+    }
 
     // Evaluate the MD cluster-finding performance.
-    if ( fdbg > 1 ) cout << myname << "Matching MD and clusters." << endl;
-    TpcSignalMatcher clumatchmd(selectedMcTpcSignalMapsMDbyROP, clusterSignalMap, true, 0);
-    clumatchmd.print(cout, 0);
+    if ( fDoMcDescendantClusterMatching ) {
+      if ( fdbg > 1 ) cout << myname << "Matching MD and clusters." << endl;
+      TpcSignalMatcher clumatchmd(selectedMcTpcSignalMapsMDbyROP, clusterSignalMap, true, 0);
+      clumatchmd.print(cout, 0);
+    }
 
     // Evaluate the SC cluster-finding performance.
-    if ( fdbg > 1 ) cout << myname << "Matching SC and clusters." << endl;
-    TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, clusterSignalMap, true, 0);
-    clumatchsc.print(cout, 0);
-    if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
-    if ( m_ptsmtSC != nullptr ) m_ptsmtSC->fill(event, clumatchsc);
+    if ( fDoSimChannelClusterMatching ) {
+      if ( fdbg > 1 ) cout << myname << "Matching SC and clusters." << endl;
+      TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, clusterSignalMap, true, 0);
+      clumatchsc.print(cout, 0);
+      if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
+      if ( m_ptsmtSC != nullptr ) m_ptsmtSC->fill(event, clumatchsc);
+    }
 
   }  // end DoClusters
 

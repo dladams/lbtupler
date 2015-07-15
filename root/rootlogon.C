@@ -11,7 +11,7 @@
   gROOT->ProcessLine(".L draw.cxx+");
   gROOT->ProcessLine(".L drawTracks.C");
   gStyle->SetPadRightMargin(0.14);   // For 2D plots
-  if ( simtree("LbTuplerSimulation") ) {
+  if ( simtree("McParticleTree") ) {
     simtree()->SetMarkerStyle(2);
   }
 }
