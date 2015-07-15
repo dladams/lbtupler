@@ -6,8 +6,8 @@ defaultqual	e6
 fcldir product_dir job
 #
 product         version
-lbnecode	v04_00_01
-gcc		v4_9_1
+lbnecode	v04_15_00
+gcc		v4_9_2
 
 #cetbuildtools	v4_04_03	-	only_for_build
 cetbuildtools	v4_08_01	-	only_for_build
@@ -19,6 +19,9 @@ qualifier	lbnecode	gcc	notes
 e6:debug	e6:debug	-nq-
 e6:opt		e6:opt		-nq-
 e6:prof		e6:prof		-nq-
+e7:debug	e7:debug	-nq-
+e7:opt		e7:opt		-nq-
+e7:prof		e7:prof		-nq-
 end_qualifier_list
 
 # Preserve tabs and formatting in emacs and vi / vim:

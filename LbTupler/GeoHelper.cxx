@@ -11,6 +11,8 @@
 #include <iomanip>
 #include <set>
 
+#undef LARSOFT0401
+
 using std::ostream;
 using std::cout;
 using std::endl;
@@ -155,7 +157,11 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
   }
   cout << prefix << "             Total # TPCs: " << ntpc() << endl;
   cout << prefix << "     Total # TPC channels: " << geometry()->Nchannels() << endl;
+#ifdef LARSOFT0401
   cout << prefix << "Total # optical detectors: " << geometry()->NOpDet() << endl;
+#else
+  cout << prefix << "Total # optical detectors: " << geometry()->NOpDets() << endl;
+#endif
   cout << prefix << " Total # optical channels: " << geometry()->NOpChannels() << endl;
   cout << prefix << endl;
   cout << prefix << "There are " << ntpc() << " TPCs:" << endl;
@@ -184,7 +190,11 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     out << prefix << setw(wlab) << sslab.str() << m_pgeo->NTPC(icry) << endl;
   }
   out << prefix << setw(wlab) <<"TPC channel count: " << m_pgeo->Nchannels() << endl;
+#ifdef LARSOFT0401
   out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDet() << endl;
+#else
+  out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDets() << endl;
+#endif
   out << prefix << setw(wlab) <<"Scintillator channel count: " << m_pgeo->NAuxDets() << endl;
   out << prefix << "TPC sizes [cm]:" << endl;
   out << prefix << setw(wcry) << "Cry" << setw(wtpc) << "TPC"

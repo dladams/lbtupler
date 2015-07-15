@@ -20,6 +20,7 @@ art_make(BASENAME_ONLY
            ${MF_UTILITIES}
            ${CETLIB}
            ${ROOT_BASIC_LIB_LIST}
+           ${Boost_SYSTEM_LIBRARY}
          MODULE_LIBRARIES
            LbTupler
 )
