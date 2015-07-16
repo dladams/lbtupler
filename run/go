@@ -29,8 +29,10 @@ else if [ $ARG -eq 1 ]; then
   FILE="../prod/single35t_hits.root"
 else if [ $ARG -eq 2 ]; then
   FILE=$DATADIR/AntiMuonCutEvents_LSU_lbne35t_31_20150220T200710_gen_20150220T205417_g4_20150220T210305_detsim_20150220T212153_reco.root
+  FW_SEARCH_PATH=./gdml:$FW_SEARCH_PATH
 else if [ $ARG -eq 3 ]; then
   FILE=$DATADIR/prodcosmics_lbne35t_milliblock_1_20150220T201346_gen_20150220T213621_g4_20150220T234543_detsim_milliblock_20150223T214501_reco_milliblock.root
+  FW_SEARCH_PATH=./gdml:$FW_SEARCH_PATH
 else if [ $ARG -eq 4 ]; then
   FILE="../prod/text_gen.root"
 else if [ $ARG -eq 5 ]; then

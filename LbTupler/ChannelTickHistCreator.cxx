@@ -26,7 +26,7 @@ ChannelTickHistCreator(TFileDirectory& tfs, string sevt, int tick1, int tick2,
 
 TH2* ChannelTickHistCreator::
 create(string slab, unsigned int chan1, unsigned int chan2, string stitle,
-       string sevtNameSuffix, string sevtTitleSuffix, TickRange atickRange) {
+       string sevtNameSuffix, string sevtTitleSuffix, TickRange atickRange) const {
   const string myname = "ChannelTickHistCreator::create: ";
   const int dbg = 0;    // 0 for normal running
   TH2* ph = nullptr;

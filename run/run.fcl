@@ -19,3 +19,8 @@ physics.analyzers.LbTupler.DoMcDescendantClusterMatching:  false
 physics.analyzers.LbTupler.DoSimChannelClusterMatching:    true
 
 physics.analyzers.LbTupler.TdcTickMax: 3200
+
+physics.analyzers.LbTupler.DoClusterSignalHists:           true
+
+physics.analyzers.LbTupler.ClusterLabel:    "clustercheat"
+#physics.analyzers.LbTupler.ClusterLabel:    "dbcluster"

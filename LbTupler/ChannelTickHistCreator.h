@@ -44,7 +44,7 @@ public:  // methods
   //   tickRange - used to devine range of x-axis iff range has at least one tick
   TH2* create(std::string slab, unsigned int chan1, unsigned int chan2, std::string stitle,
               std::string sevtNameSuffix ="", std::string sevtTitleSuffix ="",
-              TickRange tickRange =TickRange(0,-1));
+              TickRange tickRange =TickRange(0,-1)) const;
 
 private:  // data
 

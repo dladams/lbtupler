@@ -8,6 +8,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 // LArSoft includes
 #include "SimpleTypesAndConstants/geo_types.h" // geo::View_t, geo::SignalType, geo::WireID
@@ -77,6 +78,7 @@ using std::map;
 using std::set;
 using std::sqrt;
 using std::shared_ptr;
+using std::pair;
 using geo::WireID;
 using geo::PlaneID;
 using geo::View_t;
@@ -88,9 +90,11 @@ using tpc::IndexVector;
 
 typedef shared_ptr<TpcSignalMap> TpcSignalMapPtr;
 typedef vector<TpcSignalMapPtr> TpcSignalMapVector;
+typedef shared_ptr<TpcSignalMapVector> TpcSignalMapVectorPtr;
 typedef TpcSignalMap::Index Index;
 typedef map<int, const MCParticle*> ParticleMap;
 typedef map<Index, IndexVector> IndexVectorMap;
+typedef pair<TpcSignalMapPtr, TpcSignalMapVectorPtr> ClusterResult;
 
 namespace LbTupler {
 
@@ -127,7 +131,17 @@ public:
   double adc2de(unsigned int ichan) const;
 
   // Display a line summarizing a 2D histogram.
-  void summarize2dHist(TH2* ph, string prefix, unsigned int wnam, unsigned int wbin, unsigned int went);
+  void summarize2dHist(TH2* ph, string prefix, unsigned int wnam,
+                       unsigned int wbin, unsigned int went) const;
+
+  // Process a cluster container. A signal map is created for all clusters and for each cluster.
+  //   event - event ID
+  //   conname - name of the cluster container (producer)
+  //   label - label for naming maps and histograms, e.g. "clu"
+  //   phcreate - if non-null histograms are created with this
+  //   wnam - width for displaying histogram names
+  ClusterResult processClusters(const art::Event& evt, string conname, string label,
+                                const ChannelTickHistCreator* phcreate, unsigned int wnam) const;
 
 private:
 
@@ -1076,108 +1090,31 @@ void LbTupler::analyze(const art::Event& event) {
 
   if ( fDoClusters ) {
 
-    // Get the clusters for the event.
-    // See $LARDATA_DIR/include/RecoBase/Cluster.h
-    art::Handle<vector<recob::Cluster>> clustersHandle;
-    event.getByLabel(fClusterProducerLabel, clustersHandle);
-    std::vector<art::Ptr<recob::Cluster>> clusters;
-    art::fill_ptr_vector(clusters, clustersHandle);
-    if ( fdbg > 1 ) cout << myname << "Cluster count: " << clusters.size() << endl;
-    // Get the cluster hit associations for the event.
-    art::FindManyP<recob::Hit> clusterHits(clustersHandle, event, fClusterProducerLabel);
-    if ( ! clusterHits.isValid() ) {
-      cout << myname << "ERROR: Cluster hit association not found." << endl;
-      abort();
-    }
-
-    // Create signal maps for all clusters and for each individual cluster.
-    TpcSignalMap allClusterSignalMap("allclusters", &geohelp);
-    TpcSignalMapVector clusterSignalMap;
+    TpcSignalMapVectorPtr pclusterSignalMaps;
+    const ChannelTickHistCreator* phcreate = fDoClusterSignalHists ? &hcreateReco : nullptr;
     if ( fDoClusterSignalMaps ) {
-      for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-        ostringstream ssnam;
-        ssnam << "clu";
-        if ( iclu < 100 ) ssnam << 0;
-        if ( iclu < 10 ) ssnam << 0;
-        ssnam << iclu;
-        clusterSignalMap.push_back(TpcSignalMapPtr(new TpcSignalMap(ssnam.str(), &geohelp)));
-      }
-      // Loop over clusters.
-      cout << myname << "Looping over clusters (size = " << clusters.size() << ")" << endl;
-      for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-        art::Ptr<recob::Cluster> pclu = clusters[iclu];
-        Index irop = geohelp.rop(pclu->Plane());
-        std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
-        allClusterSignalMap.addCluster(hits);
-        clusterSignalMap[iclu]->addCluster(hits);
-        clusterSignalMap[iclu]->setRop(irop);
-      }
-
-      // Display the cluster signal map.
-      int flag = fdbg > 2 ? 1 : 0;
-      if ( fdbg > 0 ) {
-        cout << myname << "Summary of cluster signal map" << endl;
-        for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-          ostringstream ssclu;
-          ssclu << setw(6) << iclu << ":";
-          clusterSignalMap[iclu]->print(cout, flag, myname + ssclu.str());
-        }
-        allClusterSignalMap.print(cout, flag, myname + "   all:");
-      }
-
+      ClusterResult clures = processClusters(event, fClusterProducerLabel, "clu", phcreate, wnam);
+      pclusterSignalMaps = clures.second;
     }  // end DoClusterSignalMaps
-
-    if ( fDoClusterSignalHists ) {
-      // Create the channel-tick histograms for all clusters.
-      if ( fdbg > 1 ) cout << myname << "Summary of cluster hit histograms:" << endl;
-      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        TH2* ph = hcreateReco.create("clu" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                     "Cluster hits for " + geohelp.ropName(irop));
-        allClusterSignalMap.fillRopChannelTickHist(ph,irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
-      }
-  
-      // Create the channel-tick histograms for each cluster.
-      if ( fdbg > 1 ) cout << myname << "Summary of per-cluster hit histograms:" << endl;
-      for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
-        ostringstream ssclu;
-        ssclu << iclu;
-        string sclu = ssclu.str();
-        TpcSignalMapPtr pch = clusterSignalMap[iclu];
-        for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-          if ( pch->ropNbin(irop) == 0 ) {
-            if ( fdbg > 2 ) cout << myname << "  Skipping " << irop << endl;
-            continue;
-          }
-          TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
-                                       "Cluster hits for " + geohelp.ropName(irop),
-                                       "", "cluster " + sclu, pch->tickRange());
-          if ( ph != nullptr ) {
-            pch->fillRopChannelTickHist(ph,irop);
-            if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
-          }
-        }
-      }
-    } // end DoClusterSignalHists
 
     // Evaluate the MC cluster-finding performance.
     if ( fDoMcParticleClusterMatching ) {
       if ( fdbg > 1 ) cout << myname << "Matching MC and clusters." << endl;
-      TpcSignalMatcher clumatchmc(selectedMcTpcSignalMapsMCbyROP, clusterSignalMap, true, 0);
+      TpcSignalMatcher clumatchmc(selectedMcTpcSignalMapsMCbyROP, *pclusterSignalMaps, true, 0);
       clumatchmc.print(cout, 0);
     }
 
     // Evaluate the MD cluster-finding performance.
     if ( fDoMcDescendantClusterMatching ) {
       if ( fdbg > 1 ) cout << myname << "Matching MD and clusters." << endl;
-      TpcSignalMatcher clumatchmd(selectedMcTpcSignalMapsMDbyROP, clusterSignalMap, true, 0);
+      TpcSignalMatcher clumatchmd(selectedMcTpcSignalMapsMDbyROP, *pclusterSignalMaps, true, 0);
       clumatchmd.print(cout, 0);
     }
 
     // Evaluate the SC cluster-finding performance.
     if ( fDoSimChannelClusterMatching ) {
       if ( fdbg > 1 ) cout << myname << "Matching SC and clusters." << endl;
-      TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, clusterSignalMap, true, 0);
+      TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, *pclusterSignalMaps, true, 0);
       clumatchsc.print(cout, 0);
       if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
       if ( m_ptsmtSC != nullptr ) m_ptsmtSC->fill(event, clumatchsc);
@@ -1216,12 +1153,107 @@ double LbTupler::adc2de(unsigned int ichan) const {
 
 void LbTupler::
 summarize2dHist(TH2* ph, string prefix,
-                unsigned int wnam, unsigned int wbin, unsigned int went) {
+                unsigned int wnam, unsigned int wbin, unsigned int went) const {
   cout << prefix << "  " << setw(wnam) << std::left << ph->GetName()
        << std::right << " bins=" << setw(wbin) << ph->GetNbinsY() << "x" << ph->GetNbinsX()
        << ", entries=" << setw(went) << ph->GetEntries() << endl;
 }
 
+//************************************************************************
+
+ClusterResult LbTupler::
+processClusters(const art::Event& event, string conname, string label,
+                const ChannelTickHistCreator* phcreateReco, unsigned int wnam) const {
+  const string myname = "ClusterResult LbTupler: ";
+  ClusterResult out;
+  GeoHelper& geohelp = *fgeohelp;
+
+  // Get the clusters for the event.
+  // See $LARDATA_DIR/include/RecoBase/Cluster.h
+  art::Handle<vector<recob::Cluster>> clustersHandle;
+  event.getByLabel(conname, clustersHandle);
+  std::vector<art::Ptr<recob::Cluster>> clusters;
+  art::fill_ptr_vector(clusters, clustersHandle);
+  if ( fdbg > 1 ) cout << myname << "Cluster count: " << clusters.size() << endl;
+  // Get the cluster hit associations for the event.
+  art::FindManyP<recob::Hit> clusterHits(clustersHandle, event, conname);
+  if ( ! clusterHits.isValid() ) {
+    cout << myname << "ERROR: Cluster hit association not found." << endl;
+    abort();
+  }
+
+  // Create signal maps for all clusters and for each individual cluster.
+  out.first.reset(new  TpcSignalMap("all" + label, &geohelp));
+  TpcSignalMap& allClusterSignalMap = *out.first;
+  out.second.reset(new TpcSignalMapVector);
+  TpcSignalMapVector& clusterSignalMap = *out.second;
+  for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+    ostringstream ssnam;
+    ssnam << label;
+    if ( iclu < 100 ) ssnam << 0;
+    if ( iclu < 10 ) ssnam << 0;
+    ssnam << iclu;
+    clusterSignalMap.push_back(TpcSignalMapPtr(new TpcSignalMap(ssnam.str(), &geohelp)));
+  }
+  // Loop over clusters.
+  cout << myname << "Looping over clusters (size = " << clusters.size() << ")" << endl;
+  for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+    art::Ptr<recob::Cluster> pclu = clusters[iclu];
+    Index irop = geohelp.rop(pclu->Plane());
+    std::vector<art::Ptr<recob::Hit>> hits = clusterHits.at(iclu);
+    allClusterSignalMap.addCluster(hits);
+    clusterSignalMap[iclu]->addCluster(hits);
+    clusterSignalMap[iclu]->setRop(irop);
+  }
+
+  // Display the cluster signal map.
+  int flag = fdbg > 2 ? 1 : 0;
+  if ( fdbg > 0 ) {
+    cout << myname << "Summary of cluster signal maps" << endl;
+    allClusterSignalMap.print(cout, flag, myname + "   all: ");
+    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+      ostringstream ssclu;
+      ssclu << setw(6) << iclu << ": ";
+      clusterSignalMap[iclu]->print(cout, flag, myname + ssclu.str());
+    }
+  }
+
+  if ( phcreateReco != nullptr ) {
+    const ChannelTickHistCreator& hcreateReco = *phcreateReco;
+    // Create the channel-tick histograms for all clusters.
+    if ( fdbg > 1 ) cout << myname << "Summary of cluster hit histograms:" << endl;
+    for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+      TH2* ph = hcreateReco.create(label + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                   "Cluster hits for " + geohelp.ropName(irop));
+      allClusterSignalMap.fillRopChannelTickHist(ph,irop);
+      if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 7);
+    }
+
+    // Create the channel-tick histograms for each cluster.
+    if ( fdbg > 1 ) cout << myname << "Summary of per-cluster hit histograms:" << endl;
+    for ( unsigned int iclu=0; iclu<clusters.size(); ++iclu ) {
+      ostringstream ssclu;
+      ssclu << iclu;
+      string sclu = ssclu.str();
+      TpcSignalMapPtr pch = clusterSignalMap[iclu];
+      for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
+        if ( pch->ropNbin(irop) == 0 ) {
+          if ( fdbg > 2 ) cout << myname << "  Skipping " << irop << endl;
+          continue;
+        }
+        TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
+                                     "Cluster hits for " + geohelp.ropName(irop),
+                                     "", "cluster " + sclu, pch->tickRange());
+        if ( ph != nullptr ) {
+          pch->fillRopChannelTickHist(ph,irop);
+          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);
+        }
+      }
+    }
+  }
+
+  return out;
+}
 //************************************************************************
 
   // This macro has to be defined for this module to be invoked from a
