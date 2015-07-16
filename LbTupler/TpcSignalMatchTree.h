@@ -44,6 +44,7 @@ private:
   int fevent;
   int fRun;
   int fSubRun;
+  int fstat;          // Match status (1=matched, 2=unmatched, 3=duplicate)
   int fref;           // Reference index (e.g. MC index)
   int fmatch;         // Match index (e.g. cluster number)
   float fdistance;    // Math-reference distance
@@ -51,6 +52,8 @@ private:
   int frnbin;         // # channel-tick bins in the reference.
   int fmnbin;         // # channel-tick bins in the match.
   int frnseg;         // # segments attached to the reference.
+  float frsig;
+  float fmsig;
 
 }; // class TpcSignalMatchTree
 

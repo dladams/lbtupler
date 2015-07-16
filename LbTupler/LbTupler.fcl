@@ -46,9 +46,9 @@ services:
 
 }
 services.user.ExptGeoHelperInterface: @local::lbne_geometry_helper
-services.user.Geometry.GDML: "lbne35t4apa_v3.gdml"
-services.user.Geometry.ROOT: "lbne35t4apa_v3.gdml"
-services.user.Geometry.SortingParameters.DetectorVersion: "lbne35t4apa_v3"
+#services.user.Geometry.GDML: "lbne35t4apa_v3.gdml"
+#services.user.Geometry.ROOT: "lbne35t4apa_v3.gdml"
+#services.user.Geometry.SortingParameters.DetectorVersion: "lbne35t4apa_v3"
 
 # The 'source' section tells the script to expect an input file with art::Event records.
 # Note that the name of the input file is not included here. You specify that on the
@@ -92,6 +92,7 @@ physics:
       DoMcDescendantSignalHists:      true
       DoSimChannelSignalHists:        true
       DoRawSignalHists:               true
+      DoDeconvolutedSignalHists:      true
       DoWireSignalHists:              true 
       DoHitSignalHists:               true
       DoClusterSignalHists:           true

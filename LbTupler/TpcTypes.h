@@ -19,6 +19,7 @@ typedef std::vector<Index> IndexVector;
 Channel badChannel();
 Tick badTick();
 Index badIndex();
+Index badIndex2();
 
 }
 

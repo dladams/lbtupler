@@ -7,11 +7,12 @@ physics.analyzers.LbTupler.DoSimChannelTree:               false
 
 physics.analyzers.LbTupler.DoMcParticleSignalHists:        false
 physics.analyzers.LbTupler.DoMcDescendantSignalHists:      false
-physics.analyzers.LbTupler.DoSimChannelSignalHists:        true
 physics.analyzers.LbTupler.DoRawSignalHists:               false
-physics.analyzers.LbTupler.DoDeconvolutedSignalHists:      true
 physics.analyzers.LbTupler.DoHitSignalHists:               false
-physics.analyzers.LbTupler.DoClusterSignalHists:           true
+
+physics.analyzers.LbTupler.DoSimChannelSignalHists:          false
+physics.analyzers.LbTupler.DoDeconvolutedSignalHists:        false
+physics.analyzers.LbTupler.DoClusterSignalHists:             false
 
 physics.analyzers.LbTupler.DoMcParticleClusterMatching:    false
 physics.analyzers.LbTupler.DoMcDescendantClusterMatching:  false

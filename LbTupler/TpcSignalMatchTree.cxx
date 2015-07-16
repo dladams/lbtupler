@@ -41,6 +41,7 @@ TpcSignalMatchTree::TpcSignalMatchTree(string tname)
   m_ptree->Branch("event",       &fevent,          "event/I");
   m_ptree->Branch("run",         &fRun,            "run/I");
   m_ptree->Branch("subrun",      &fSubRun,         "subrun/I");
+  m_ptree->Branch("stat",        &fstat,           "stat/I");      // match status
   m_ptree->Branch("ref",         &fref,            "ref/I");       // Ref index
   m_ptree->Branch("match",       &fmatch,          "match/I");     // Match index for
   m_ptree->Branch("distance",    &fdistance,       "distance/F");  // distance for match
@@ -48,6 +49,8 @@ TpcSignalMatchTree::TpcSignalMatchTree(string tname)
   m_ptree->Branch("rnbin",       &frnbin,          "rnbin/I");     // # bins in ref
   m_ptree->Branch("mnbin",       &fmnbin,          "mnbin/I");     // # bins in ref
   m_ptree->Branch("rnseg",       &frnseg,          "rnseg/I");     // # bins in ref
+  m_ptree->Branch("rsig",        &frsig,           "rsig/F");      // total signal in ref
+  m_ptree->Branch("msig",        &fmsig,           "msig/F");      // total signal in match
 
   if ( dbg > 0 ) {
     cout << myname << "Initialization complete." << endl;
@@ -72,22 +75,22 @@ int TpcSignalMatchTree::fill(const art::Event& evt, const TpcSignalMatcher& matc
   cout << myname << " Reference vector size: " << match.referenceVector().size() << endl;
   cout << myname << "     Match vector size: " << match.matchVector().size() << endl;
   for ( unsigned int ient =0; ient<match.size(); ++ ient ) {
+    fstat = match.matchStatus(ient);
     fref = ient;
     fmatch = match.matchIndex(ient);
     fdistance = match.matchDistance(ient);
     Index imat = match.matchIndex(ient);
-    if ( imat == badIndex() ) {
-      frop = badIndex();
-      fmnbin = 0;
-      frnbin = 0;
-      frnseg = 0;
-    } else {
-      const TpcSignalMap& rtsm = *match.referenceVector().at(ient);
+    const TpcSignalMap& rtsm = *match.referenceVector().at(ient);
+    frnbin = rtsm.binCount();
+    frnseg = rtsm.segments().size();
+    frop = rtsm.rop();
+    frsig = rtsm.tickSignal();
+    fmnbin = 0;
+    fmsig = 0.0;
+    if ( fstat==TpcSignalMatcher::MATCHED || fstat==TpcSignalMatcher::DUPLICATE ) {
       const TpcSignalMap& mtsm = *match.matchVector().at(imat);
-      frop = rtsm.rop();
       fmnbin = mtsm.binCount();
-      frnbin = rtsm.binCount();
-      frnseg = rtsm.segments().size();
+      fmsig = mtsm.tickSignal();
     }
     m_ptree->Fill();
   }

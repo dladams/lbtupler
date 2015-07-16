@@ -27,6 +27,14 @@ public:
   typedef std::vector<P2> C2;
   typedef double (*Distance)(const T1&, const T2&);
 
+  enum Status {
+    UNDEFINEDSTATUS = 0,
+    MATCHED = 1,
+    UNMATCHED = 2,
+    DUPLICATE = 3
+  };
+  typedef std::vector<Status> StatusVector;
+
 public:
 
   // Ctor.
@@ -51,8 +59,9 @@ public:
   // # of entries (ref-match pairs)
   unsigned int size() const;
 
-  // Rec index for each ref index.
-  int matchIndex(Index iref) const;
+  // Match status, index and distance for each ref index.
+  Status matchStatus(Index iref) const;
+  Index matchIndex(Index iref) const;
   float matchDistance(Index iref) const;
 
   // Return a string describing the match.
@@ -67,6 +76,7 @@ private:
 
   const C1& m_c1;
   const C2& m_c2;
+  StatusVector m_matchStatus;
   IndexVector m_matchIndex;
   FloatVector m_matchDistance;
 

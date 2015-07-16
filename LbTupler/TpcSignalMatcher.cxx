@@ -14,6 +14,7 @@ using std::ostream;
 using std::endl;
 using std::vector;
 using tpc::badIndex;
+using tpc::badIndex2;
 
 typedef TpcSignalMatcher::Index Index;
 typedef TpcSignalMatcher::Distance Distance;
@@ -93,9 +94,11 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
       indicesByRop[0].push_back(i2);
     }
   }
+  // Do the matching.
   for ( const auto& p1 : m_c1 ) {
     if ( dbg > 1 ) cout << myname << "  Reference candidate " << i1 << endl;
     double dmin = maxDistance();
+    Status stat = UNMATCHED;
     Index imin = m_c2.size();
     Index irop = ropMatch ? p1->rop() : 0;
     if ( dbg > 1 ) cout << myname << "  Match vector size for ROP " << irop << " is "
@@ -105,14 +108,48 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
       double dis = distance()(*p1, *p2);
       if ( dbg > 1 ) cout << myname << "    Matching candidate " << i2 << " has distance " << dis << endl;
       if ( dis < dmin ) {
+        stat = MATCHED;
         imin = i2;
         dmin = dis;
       }
     }
+    m_matchStatus.push_back(stat);
     m_matchIndex.push_back(imin);
     m_matchDistance.push_back(dmin);
-    if ( dbg ) cout << myname << "  Match to " << imin << " with distance " << dmin << endl;
+    if ( dbg ) {
+      if ( stat == MATCHED ) cout << myname << "  Match to " << imin << " with distance " << dmin << endl;
+      else cout << myname << "  No match found" << endl;
+    }
     ++i1;
+  }
+  // Remove duplicate matches.
+  // For now remove the match with fewer bins.
+  // Loop over all matches.
+  for ( Index i1=0; i1<m_c1.size(); ++i1 ) {
+    Status stati = matchStatus(i1);
+    if ( stati != MATCHED ) continue;
+    unsigned int i2 = matchIndex(i1);
+    if ( i2 != badIndex() ) {
+      // Loop over later matches.
+      for ( Index j1=i1+1; j1<m_c1.size(); ++j1 ) {
+        Status statj = matchStatus(i1);
+        if ( statj != MATCHED ) continue;
+        unsigned int j2 = matchIndex(j1);
+        if ( j2 == i2 ) {
+          unsigned int ni2 = c2.at(i2)->size();
+          unsigned int nj2 = c2.at(j2)->size();
+          bool dropj = nj2 < ni2;
+          if ( dropj ) {
+            m_matchIndex[j1] = badIndex2();  // -2
+            m_matchStatus[j1] = DUPLICATE;
+          } else {
+            m_matchIndex[i1] = badIndex2();
+            m_matchStatus[i1] = DUPLICATE;
+            break;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -137,11 +174,16 @@ unsigned int TpcSignalMatcher::size() const {
 
 //**********************************************************************
 
-int TpcSignalMatcher::matchIndex(Index iref) const {
+TpcSignalMatcher::Status TpcSignalMatcher::matchStatus(Index iref) const {
+  if ( iref >= m_matchStatus.size() ) return UNDEFINEDSTATUS;
+  return m_matchStatus[iref];
+}
+
+//**********************************************************************
+
+Index TpcSignalMatcher::matchIndex(Index iref) const {
   if ( iref >= m_matchIndex.size() ) return -1;
-  Index i2 = m_matchIndex[iref];
-  if ( i2 >= m_c2.size() ) return -1;
-  return i2;
+  return m_matchIndex[iref];
 }
 
 //**********************************************************************
@@ -172,6 +214,7 @@ string TpcSignalMatcher::show(int opt) const {
           << " " << setw(wnam) << "Matched"
           << " " << setw(wdis) << "Distance";
     for ( Index i1=0; i1<m_c1.size(); ++i1 ) {
+      Status stat = matchStatus(i1);
       ssout << "\n";
       ssout << setw(widx) << i1;
       ssout << " " << setw(wnam) << m_c1[i1]->name()
@@ -179,10 +222,11 @@ string TpcSignalMatcher::show(int opt) const {
             << " " << setw(wnti) << m_c1[i1]->tickCount()
             << " " << setw(wnbi) << m_c1[i1]->binCount();
       int i2 = matchIndex(i1);
-      if ( i2 >= 0 ) {
+      if ( stat==MATCHED || stat==DUPLICATE ) {
         ssout << " " << setw(wnam) << m_c2[i2]->name()
               << " " << setw(wdis) << matchDistance(i1);
       }
+      if ( stat == DUPLICATE ) ssout << " (duplicate)";
     }
   } else {
     ssout << "Invalid option to TpcSignalMatcher::show";
