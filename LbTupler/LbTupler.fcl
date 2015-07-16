@@ -99,6 +99,7 @@ physics:
       DoMcParticleClusterMatching:    true
       DoMcDescendantClusterMatching:  true
       DoSimChannelClusterMatching:    true
+      DoRefClusterClusterMatching:    true
 
       # The "module_type" tells us which module to run. The name here
       # matches the name supplied to DEFINE_ART_MODULE near the end of
@@ -137,8 +138,9 @@ physics:
       # Wire container.
       WireLabel:        "caldata"
 
-      # The same for clusters:
-      ClusterLabel:    "clustercheat"
+      # The same for reference and performance clusters:
+      RefClusterLabel:  "clustercheat"
+      ClusterLabel:     "clustercheat"
 
       # The same for raw digits.
       RawDigitLabel:   "daq"

@@ -5,22 +5,28 @@ physics.analyzers.LbTupler.DebugLevel: 2
 physics.analyzers.LbTupler.DoMcParticleTree:               true
 physics.analyzers.LbTupler.DoSimChannelTree:               false
 
+# Disable all histograms.
 physics.analyzers.LbTupler.DoMcParticleSignalHists:        false
 physics.analyzers.LbTupler.DoMcDescendantSignalHists:      false
 physics.analyzers.LbTupler.DoRawSignalHists:               false
 physics.analyzers.LbTupler.DoHitSignalHists:               false
-
 physics.analyzers.LbTupler.DoSimChannelSignalHists:          false
 physics.analyzers.LbTupler.DoDeconvolutedSignalHists:        false
 physics.analyzers.LbTupler.DoClusterSignalHists:             false
 
+# Range for histograms.
+physics.analyzers.LbTupler.TdcTickMax: 3200
+
+# Which matches to perform
 physics.analyzers.LbTupler.DoMcParticleClusterMatching:    false
 physics.analyzers.LbTupler.DoMcDescendantClusterMatching:  false
 physics.analyzers.LbTupler.DoSimChannelClusterMatching:    true
+physics.analyzers.LbTupler.DoRefClusterClusterMatching:    true
 
-physics.analyzers.LbTupler.TdcTickMax: 3200
-
-physics.analyzers.LbTupler.DoClusterSignalHists:           true
-
+physics.analyzers.LbTupler.RefClusterLabel: "clustercheat"
 physics.analyzers.LbTupler.ClusterLabel:    "clustercheat"
 #physics.analyzers.LbTupler.ClusterLabel:    "dbcluster"
+
+physics.analyzers.LbTupler.DoHitSignalHists: true
+physics.analyzers.LbTupler.DoClusterSignalHists: true
+physics.analyzers.LbTupler.DoDeconvolutedSignalHists: true

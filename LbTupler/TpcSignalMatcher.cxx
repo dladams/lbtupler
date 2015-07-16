@@ -140,10 +140,8 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
           unsigned int nj2 = c2.at(j2)->size();
           bool dropj = nj2 < ni2;
           if ( dropj ) {
-            m_matchIndex[j1] = badIndex2();  // -2
             m_matchStatus[j1] = DUPLICATE;
           } else {
-            m_matchIndex[i1] = badIndex2();
             m_matchStatus[i1] = DUPLICATE;
             break;
           }

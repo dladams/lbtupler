@@ -95,6 +95,7 @@ typedef TpcSignalMap::Index Index;
 typedef map<int, const MCParticle*> ParticleMap;
 typedef map<Index, IndexVector> IndexVectorMap;
 typedef pair<TpcSignalMapPtr, TpcSignalMapVectorPtr> ClusterResult;
+typedef shared_ptr<TpcSignalMatchTree> TpcSignalMatchTreePtr;
 
 namespace LbTupler {
 
@@ -163,12 +164,14 @@ private:
   bool fDoMcParticleClusterMatching;   // Match clusters to McParticle signals.
   bool fDoMcDescendantClusterMatching; // Match clusters to McParticle descendant signals.
   bool fDoSimChannelClusterMatching;   // Match clusters to SimChannel signals.
+  bool fDoRefClusterClusterMatching;   // Match clusters to reference clusters.
   string fTruthProducerLabel;          // The name of the producer that tracked simulated particles through the detector
   string fParticleProducerLabel;       // The name of the producer that tracked simulated particles through the detector
   string fSimulationProducerLabel;     // The name of the producer that tracked simulated particles through the detector
   string fHitProducerLabel;            // The name of the producer that created hits
   string fWireProducerLabel;           // The name of the producer that created wires
   string fClusterProducerLabel;        // The name of the producer that created clusters
+  string fRefClusterProducerLabel;     // The name of the producer that created reference clusters
   string fRawDigitProducerLabel;       // The name of the producer that created the raw digits.
   bool fUseGammaNotPi0;                // Flag to select MCParticle gamma from pi0 instead of pi0
   double fBinSize;                     // For dE/dx work: the value of dx. 
@@ -185,6 +188,7 @@ private:
   bool fDoMcDescendantSignalMaps;  // Fill MC particle descendant signal maps.
   bool fDoSimChannelSignalMaps;    // Fill SimChannel signal maps.
   bool fDoClusterSignalMaps;       // Fill Cluster signal maps.
+  bool fDoRefClusterSignalMaps;    // Fill Cluster signal maps.
 
   // Pointers to the histograms we'll create. 
   TH1D* fpdgCodeHist;
@@ -195,7 +199,8 @@ private:
   MCTrajectoryFollower* m_pmctrajmd;
 
   // The match trees.
-  TpcSignalMatchTree* m_ptsmtSC;
+  TpcSignalMatchTreePtr m_ptsmtSimChannelCluster;
+  TpcSignalMatchTreePtr m_ptsmtRefClusterCluster;
 
   // The n-tuples we'll create.
   SimChannelTupler* m_sctupler;
@@ -245,7 +250,6 @@ private:
 LbTupler::LbTupler(fhicl::ParameterSet const& parameterSet)
 : EDAnalyzer(parameterSet), fdbg(0),
   m_pmctrajmc(nullptr), m_pmctrajmd(nullptr),
-  m_ptsmtSC(nullptr),
   m_sctupler(nullptr),
   fgeohelp(nullptr) {
   // Read in the parameters from the .fcl file.
@@ -291,7 +295,8 @@ void LbTupler::beginJob() {
   m_pmctrajmd = new MCTrajectoryFollower(fmcpdsmax, "", fgeohelp, 0, 0);
 
   // Match trees.
-  m_ptsmtSC = new TpcSignalMatchTree("SCClusterMatch");
+  m_ptsmtSimChannelCluster.reset(new TpcSignalMatchTree("SimChannelClusterMatch"));
+  m_ptsmtRefClusterCluster.reset(new TpcSignalMatchTree("RefClusterClusterMatch"));
 
   // Reconstruction tree.
   fReconstructionNtuple = tfs->make<TTree>("LbTuplerReconstruction","LbTuplerReconstruction");
@@ -338,6 +343,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoMcParticleClusterMatching   = p.get<bool>("DoMcParticleClusterMatching");
   fDoMcDescendantClusterMatching = p.get<bool>("DoMcDescendantClusterMatching");
   fDoSimChannelClusterMatching   = p.get<bool>("DoSimChannelClusterMatching");
+  fDoRefClusterClusterMatching   = p.get<bool>("DoSimChannelClusterMatching");
   fTruthProducerLabel            = p.get<string>("TruthLabel");
   fParticleProducerLabel         = p.get<string>("ParticleLabel");
   fSimulationProducerLabel       = p.get<string>("SimulationLabel");
@@ -345,6 +351,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fHitProducerLabel              = p.get<string>("HitLabel");
   fWireProducerLabel             = p.get<string>("WireLabel");
   fClusterProducerLabel          = p.get<string>("ClusterLabel");
+  fRefClusterProducerLabel       = p.get<string>("RefClusterLabel");
   fUseGammaNotPi0                = p.get<bool>("UseGammaNotPi0");
   fBinSize                       = p.get<double>("BinSize");
   fscCapacity                    = p.get<double>("SimChannelSize");
@@ -364,13 +371,15 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoSimChannelSignalMaps   = fDoSimChannelSignalHists   || fDoSimChannelClusterMatching;
   fDoClusterSignalMaps = fDoClusterSignalHists ||
                          fDoMcParticleClusterMatching || fDoMcDescendantClusterMatching ||
-                         fDoSimChannelClusterMatching;
+                         fDoSimChannelClusterMatching || fDoRefClusterClusterMatching;
+  fDoRefClusterSignalMaps = fDoRefClusterClusterMatching;
   fDoMcParticleSelection = fDoMcParticleSignalMaps || fDoMcDescendantSignalMaps || fDoSimChannelSignalMaps ||
                            fDoMcParticleTree;
   fDoMcParticles = fDoMcParticleSelection;
   fDoSimChannels = fDoSimChannelSignalMaps || fDoSimChannelTree;
   fDoRaw = fDoRawSignalHists;
   fDoWires = fDoDeconvolutedSignalHists;
+  fDoHits = fDoHitSignalHists;
   fDoClusters = fDoClusterSignalMaps;
 
   // Display properties.
@@ -394,6 +403,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "DoMcParticleClusterMatching" << sep << fDoMcParticleClusterMatching << endl;
     cout << prefix << setw(wlab) << "DoMcDescendantClusterMatching" << sep << fDoMcDescendantClusterMatching << endl;
     cout << prefix << setw(wlab) << "DoSimChannelClusterMatching" << sep << fDoSimChannelClusterMatching << endl;
+    cout << prefix << setw(wlab) << "DoRefClusterClusterMatching" << sep << fDoRefClusterClusterMatching << endl;
     cout << prefix << setw(wlab) << "TruthLabel" << sep << fTruthProducerLabel << endl;
     cout << prefix << setw(wlab) << "ParticleLabel" << sep << fParticleProducerLabel << endl;
     cout << prefix << setw(wlab) << "SimulationLabel" << sep << fSimulationProducerLabel << endl;
@@ -401,6 +411,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "HitLabel" << sep << fHitProducerLabel << endl;
     cout << prefix << setw(wlab) << "WireLabel" << sep << fWireProducerLabel << endl;
     cout << prefix << setw(wlab) << "ClusterLabel" << sep << fClusterProducerLabel << endl;
+    cout << prefix << setw(wlab) << "RefClusterLabel" << sep << fRefClusterProducerLabel << endl;
     cout << prefix << setw(wlab) << "UseGammaNotPi0" << sep << fUseGammaNotPi0 << endl;
     cout << prefix << setw(wlab) << "BinSize" << sep << fBinSize << endl;
     cout << prefix << setw(wlab) << "SimChannelSize" << sep << fscCapacity << endl;
@@ -430,6 +441,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "DoMcDescendantSignalMaps" << sep << fDoMcDescendantSignalMaps << endl;
     cout << prefix << setw(wlab) << "DoSimChannelSignalMaps" << sep << fDoSimChannelSignalMaps << endl;
     cout << prefix << setw(wlab) << "DoClusterSignalMaps" << sep << fDoClusterSignalMaps << endl;
+    cout << prefix << setw(wlab) << "DoRefClusterSignalMaps" << sep << fDoRefClusterSignalMaps << endl;
   }
   cout << myname << endl;
   fgeohelp = new GeoHelper(&*fGeometry, 0);
@@ -1088,6 +1100,15 @@ void LbTupler::analyze(const art::Event& event) {
   // Clusters.
   //************************************************************************
 
+  // Reference clusters.
+  TpcSignalMapVectorPtr prefClusterSignalMaps;
+  if ( fDoRefClusterSignalMaps ) {
+    TpcSignalMapVectorPtr pclusterSignalMaps;
+    ClusterResult clures = processClusters(event, fRefClusterProducerLabel, "rcl", nullptr, wnam);
+    prefClusterSignalMaps = clures.second;
+  }
+
+  // Clusters to evaluate.
   if ( fDoClusters ) {
 
     TpcSignalMapVectorPtr pclusterSignalMaps;
@@ -1114,10 +1135,19 @@ void LbTupler::analyze(const art::Event& event) {
     // Evaluate the SC cluster-finding performance.
     if ( fDoSimChannelClusterMatching ) {
       if ( fdbg > 1 ) cout << myname << "Matching SC and clusters." << endl;
-      TpcSignalMatcher clumatchsc(selectedMcTpcSignalMapsSCbyROP, *pclusterSignalMaps, true, 0);
-      clumatchsc.print(cout, 0);
+      TpcSignalMatcher match(selectedMcTpcSignalMapsSCbyROP, *pclusterSignalMaps, true, 0);
+      match.print(cout, 0);
       if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
-      if ( m_ptsmtSC != nullptr ) m_ptsmtSC->fill(event, clumatchsc);
+      if ( m_ptsmtSimChannelCluster ) m_ptsmtSimChannelCluster->fill(event, match);
+    }
+
+    // Evaluate the reference cluster cluster-finding performance.
+    if ( fDoRefClusterClusterMatching ) {
+      if ( fdbg > 1 ) cout << myname << "Matching reference clusters and clusters." << endl;
+      TpcSignalMatcher match(*prefClusterSignalMaps, *pclusterSignalMaps, true, 0);
+      match.print(cout, 0);
+      if ( fdbg > 1 ) cout << myname << "Filling match tree." << endl;
+      if ( m_ptsmtRefClusterCluster ) m_ptsmtRefClusterCluster->fill(event, match);
     }
 
   }  // end DoClusters
