@@ -18,6 +18,7 @@
 #include "RecoBase/Hit.h"
 #include "RecoBase/Wire.h"
 #include "RecoBase/Cluster.h"
+#include "RecoBase/Track.h"
 #include "Utilities/DetectorProperties.h"
 #include "Utilities/LArProperties.h"
 //#include "HitFinderLBNE/APAGeometryAlg.h"
@@ -86,6 +87,8 @@ using geo::kU;
 using geo::kV;
 using geo::kZ;
 using simb::MCParticle;
+using recob::Cluster;
+using recob::Track;
 using tpc::IndexVector;
 
 typedef shared_ptr<TpcSignalMap> TpcSignalMapPtr;
@@ -96,6 +99,8 @@ typedef map<int, const MCParticle*> ParticleMap;
 typedef map<Index, IndexVector> IndexVectorMap;
 typedef pair<TpcSignalMapPtr, TpcSignalMapVectorPtr> ClusterResult;
 typedef shared_ptr<TpcSignalMatchTree> TpcSignalMatchTreePtr;
+typedef art::Ptr<recob::Cluster> ClusterPtr;
+typedef vector<ClusterPtr> ClusterPtrVector;
 
 namespace LbTupler {
 
@@ -144,6 +149,9 @@ public:
   ClusterResult processClusters(const art::Event& evt, string conname, string label,
                                 const ChannelTickHistCreator* phcreate, unsigned int wnam) const;
 
+  // Process a track contaienr.
+  void processTracks(const art::Event& evt, string conname, string label) const;
+
 private:
 
   // The stuff below is the part you'll most likely have to change to
@@ -173,6 +181,7 @@ private:
   string fWireProducerLabel;           // The name of the producer that created wires
   string fClusterProducerLabel;        // The name of the producer that created clusters
   string fRefClusterProducerLabel;     // The name of the producer that created reference clusters
+  string fTrackProducerLabel;          // The name of the producer that created tracks
   string fRawDigitProducerLabel;       // The name of the producer that created the raw digits.
   bool fUseGammaNotPi0;                // Flag to select MCParticle gamma from pi0 instead of pi0
   double fBinSize;                     // For dE/dx work: the value of dx. 
@@ -184,6 +193,7 @@ private:
   bool fDoWires;                   // Read wire (deconvoluted) data
   bool fDoHits;                    // Read hit data
   bool fDoClusters;                // Read cluster data
+  bool fDoTracks;                  // Read track data
   bool fDoMcParticleSelection;     // Select MC particles.
   bool fDoMcParticleSignalMaps;    // Fill MC particle signal maps.
   bool fDoMcDescendantSignalMaps;  // Fill MC particle descendant signal maps.
@@ -342,6 +352,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoHitSignalHists              = p.get<bool>("DoHitSignalHists");
   fDoClusterSignalHists          = p.get<bool>("DoClusterSignalHists");
   fDoRefClusterSignalHists       = p.get<bool>("DoRefClusterSignalHists");
+  fDoTracks                      = p.get<bool>("DoTracks");
   fDoMcParticleClusterMatching   = p.get<bool>("DoMcParticleClusterMatching");
   fDoMcDescendantClusterMatching = p.get<bool>("DoMcDescendantClusterMatching");
   fDoSimChannelClusterMatching   = p.get<bool>("DoSimChannelClusterMatching");
@@ -354,6 +365,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fWireProducerLabel             = p.get<string>("WireLabel");
   fClusterProducerLabel          = p.get<string>("ClusterLabel");
   fRefClusterProducerLabel       = p.get<string>("RefClusterLabel");
+  fTrackProducerLabel            = p.get<string>("TrackLabel");
   fUseGammaNotPi0                = p.get<bool>("UseGammaNotPi0");
   fBinSize                       = p.get<double>("BinSize");
   fscCapacity                    = p.get<double>("SimChannelSize");
@@ -1157,6 +1169,14 @@ void LbTupler::analyze(const art::Event& event) {
   }  // end DoClusters
 
   //************************************************************************
+  // Tracks.
+  //************************************************************************
+
+  if ( fDoTracks ) {
+    processTracks(event, fTrackProducerLabel, "trk");
+  }
+
+  //************************************************************************
   // Done.
   //************************************************************************
 
@@ -1198,7 +1218,7 @@ summarize2dHist(TH2* ph, string prefix,
 ClusterResult LbTupler::
 processClusters(const art::Event& event, string conname, string label,
                 const ChannelTickHistCreator* phcreateReco, unsigned int wnam) const {
-  const string myname = "ClusterResult LbTupler: ";
+  const string myname = "LbTupler::processClusters: ";
   ClusterResult out;
   GeoHelper& geohelp = *fgeohelp;
 
@@ -1286,9 +1306,50 @@ processClusters(const art::Event& event, string conname, string label,
       }
     }
   }
-
   return out;
 }
+
+//************************************************************************
+
+// For now, this method simply dumps the track-cluster associations to the log.
+// Why do I see so many repeated clusters associated with a track?
+
+void LbTupler::
+processTracks(const art::Event& event, string conname, string label) const {
+  const string myname = "LbTupler::processTracks: ";
+  GeoHelper& geohelp = *fgeohelp;
+
+  // Get the tracks for the event.
+  // See $LARDATA_DIR/include/RecoBase/Track.h
+  art::Handle<vector<recob::Track>> tracksHandle;
+  event.getByLabel(conname, tracksHandle);
+  std::vector<art::Ptr<recob::Track>> tracks;
+  art::fill_ptr_vector(tracks, tracksHandle);
+  if ( fdbg > 1 ) cout << myname << "Track count: " << tracks.size() << endl;
+  // Get the cluster hit associations for the event.
+  art::FindManyP<recob::Cluster> trackClusters(tracksHandle, event, conname);
+  if ( ! trackClusters.isValid() ) {
+    cout << myname << "ERROR: Track-cluster association not found." << endl;
+    abort();
+  }
+  if ( trackClusters.size() != tracks.size() ) {
+    cout << myname << "ERROR: Track-cluster association size differs from tracks: "
+         << trackClusters.size() << " != " << tracks.size() << endl;
+    abort();
+  }
+  if ( fdbg > 1 ) cout << myname << "Track-cluster association count: "
+                       << trackClusters.size() << endl;
+  for ( unsigned int itrk=0; itrk<tracks.size(); ++itrk ) {
+    //art::Ptr<recob::Track> ptrk = tracks[itrk];
+    //Index irop = geohelp.rop(pclu->Plane());
+    ClusterPtrVector clusters = trackClusters.at(itrk);
+    cout << myname << "Track " << itrk << " cluster multiplicity: " << clusters.size() << endl;
+    for ( ClusterPtr pclu : clusters ) {
+      cout << myname << *pclu << endl;
+    }
+  }
+}
+
 //************************************************************************
 
   // This macro has to be defined for this module to be invoked from a

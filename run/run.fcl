@@ -28,8 +28,10 @@ physics.analyzers.LbTupler.RefClusterLabel: "clustercheat"
 #physics.analyzers.LbTupler.ClusterLabel:    "clustercheat"
 physics.analyzers.LbTupler.ClusterLabel:    "dbcluster"
 
-
 #physics.analyzers.LbTupler.DoSimChannelSignalHists:   true
 #physics.analyzers.LbTupler.DoClusterSignalHists:      true
 #physics.analyzers.LbTupler.DoRefClusterSignalHists:   true
 #physics.analyzers.LbTupler.DoDeconvolutedSignalHists: true
+
+physics.analyzers.LbTupler.DoTracks: true
+physics.analyzers.LbTupler.TrackLabel:    "costrk"
