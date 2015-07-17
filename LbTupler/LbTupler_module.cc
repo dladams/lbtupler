@@ -161,6 +161,7 @@ private:
   bool fDoDeconvolutedSignalHists;     // Create signal histograms for the Wires (deconvoluted signals)
   bool fDoHitSignalHists;              // Create signal histograms for the the Hits.
   bool fDoClusterSignalHists;          // Create signal histograms for the Clusters.
+  bool fDoRefClusterSignalHists;       // Create signal histograms for the reference Clusters.
   bool fDoMcParticleClusterMatching;   // Match clusters to McParticle signals.
   bool fDoMcDescendantClusterMatching; // Match clusters to McParticle descendant signals.
   bool fDoSimChannelClusterMatching;   // Match clusters to SimChannel signals.
@@ -340,6 +341,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoDeconvolutedSignalHists     = p.get<bool>("DoDeconvolutedSignalHists");
   fDoHitSignalHists              = p.get<bool>("DoHitSignalHists");
   fDoClusterSignalHists          = p.get<bool>("DoClusterSignalHists");
+  fDoRefClusterSignalHists       = p.get<bool>("DoRefClusterSignalHists");
   fDoMcParticleClusterMatching   = p.get<bool>("DoMcParticleClusterMatching");
   fDoMcDescendantClusterMatching = p.get<bool>("DoMcDescendantClusterMatching");
   fDoSimChannelClusterMatching   = p.get<bool>("DoSimChannelClusterMatching");
@@ -372,7 +374,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoClusterSignalMaps = fDoClusterSignalHists ||
                          fDoMcParticleClusterMatching || fDoMcDescendantClusterMatching ||
                          fDoSimChannelClusterMatching || fDoRefClusterClusterMatching;
-  fDoRefClusterSignalMaps = fDoRefClusterClusterMatching;
+  fDoRefClusterSignalMaps = fDoRefClusterSignalHists || fDoRefClusterClusterMatching;
   fDoMcParticleSelection = fDoMcParticleSignalMaps || fDoMcDescendantSignalMaps || fDoSimChannelSignalMaps ||
                            fDoMcParticleTree;
   fDoMcParticles = fDoMcParticleSelection;
@@ -400,6 +402,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "DoRawSignalHists" << sep << fDoRawSignalHists << endl;
     cout << prefix << setw(wlab) << "DoHitSignalHists" << sep << fDoHitSignalHists << endl;
     cout << prefix << setw(wlab) << "DoClusterSignalHists" << sep << fDoClusterSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoRefClusterSignalHists" << sep << fDoRefClusterSignalHists << endl;
     cout << prefix << setw(wlab) << "DoMcParticleClusterMatching" << sep << fDoMcParticleClusterMatching << endl;
     cout << prefix << setw(wlab) << "DoMcDescendantClusterMatching" << sep << fDoMcDescendantClusterMatching << endl;
     cout << prefix << setw(wlab) << "DoSimChannelClusterMatching" << sep << fDoSimChannelClusterMatching << endl;
@@ -1103,8 +1106,9 @@ void LbTupler::analyze(const art::Event& event) {
   // Reference clusters.
   TpcSignalMapVectorPtr prefClusterSignalMaps;
   if ( fDoRefClusterSignalMaps ) {
+    const ChannelTickHistCreator* phcreate = fDoClusterSignalHists ? &hcreateReco : nullptr;
     TpcSignalMapVectorPtr pclusterSignalMaps;
-    ClusterResult clures = processClusters(event, fRefClusterProducerLabel, "rcl", nullptr, wnam);
+    ClusterResult clures = processClusters(event, fRefClusterProducerLabel, "rcl", phcreate, wnam);
     prefClusterSignalMaps = clures.second;
   }
 
@@ -1273,7 +1277,8 @@ processClusters(const art::Event& event, string conname, string label,
         }
         TH2* ph = hcreateReco.create(pch->name(), 0, geohelp.ropNChannel(irop),
                                      "Cluster hits for " + geohelp.ropName(irop),
-                                     "", "cluster " + sclu, pch->tickRange());
+                                     //"", "cluster " + sclu, pch->tickRange());
+                                     "", pch->name(), pch->tickRange());
         if ( ph != nullptr ) {
           pch->fillRopChannelTickHist(ph,irop);
           if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam+10, 4, 7);

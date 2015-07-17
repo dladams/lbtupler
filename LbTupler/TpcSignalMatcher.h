@@ -38,17 +38,17 @@ public:
 public:
 
   // Ctor.
-  //  c1 - reference collection
-  //  c2 - match collection
+  //  cr - reference collection
+  //  cm - match collection
   //  matchByRop - If true, only objects with the same ROP are matched. If so,
   //               all objects must have an assigned ROP.
-  TpcSignalMatcher(const C1& c1, const C2& c2, bool matchByRop, int dbg =0);
+  TpcSignalMatcher(const C1& cr, const C2& cm, bool matchByRop, int dbg =0);
 
   // Vector of reference objects.
-  const C1& referenceVector() const { return m_c1; }
+  const C1& referenceVector() const { return m_cr; }
 
   // Vector of matched objects.
-  const C2& matchVector() const { return m_c2; }
+  const C2& matchVector() const { return m_cm; }
 
   // Distance metric.
   Distance distance() const;
@@ -74,8 +74,8 @@ public:
 
 private:
 
-  const C1& m_c1;
-  const C2& m_c2;
+  const C1& m_cr;
+  const C2& m_cm;
   StatusVector m_matchStatus;
   IndexVector m_matchIndex;
   FloatVector m_matchDistance;

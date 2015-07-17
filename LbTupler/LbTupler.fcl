@@ -96,6 +96,7 @@ physics:
       DoWireSignalHists:              true 
       DoHitSignalHists:               true
       DoClusterSignalHists:           true
+      DoRefClusterSignalHists:        true
       DoMcParticleClusterMatching:    true
       DoMcDescendantClusterMatching:  true
       DoSimChannelClusterMatching:    true

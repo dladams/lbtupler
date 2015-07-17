@@ -39,20 +39,20 @@ double binFractionDistance(const T1& o1, const T2& o2) {
 
 //**********************************************************************
 
-TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, int dbg)
-: m_c1(c1), m_c2(c2) {
+TpcSignalMatcher::TpcSignalMatcher(const C1& cr, const C2& cm, bool ropMatch, int dbg)
+: m_cr(cr), m_cm(cm) {
   const string myname = "TpcSignalMatcher::ctor: ";
   if ( dbg ) {
-    cout << myname << "C1 size: " <<  m_c1.size() << endl;
-    cout << myname << "C2 size: " <<  m_c2.size() << endl;
+    cout << myname << "C1 size: " <<  m_cr.size() << endl;
+    cout << myname << "C2 size: " <<  m_cm.size() << endl;
   }
   unsigned int i1 = 0;
-  // Create vector that holds the indices of c2 indexed by ROP.
+  // Create vector that holds the indices of cm indexed by ROP.
   // If ropMatch is not true, all are recorded with ROP=0.
   vector<IndexVector> indicesByRop(1);
   if ( ropMatch ) {
     Index maxrop = 0;
-    for ( const auto& p1 : m_c1 ) {
+    for ( const auto& p1 : m_cr ) {
       Index irop = p1->rop();
       if ( dbg > 1 ) cout << myname << "  irop1: " << irop << endl;
       if ( irop == badIndex() ) {
@@ -61,7 +61,7 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
       }
       if ( irop > maxrop ) maxrop = irop;
     }
-    for ( const auto& p2 : m_c2 ) {
+    for ( const auto& p2 : m_cm ) {
       Index irop = p2->rop();
       if ( dbg > 1 ) cout << myname << "  irop2: " << irop << endl;
       if ( irop == badIndex() ) {
@@ -78,8 +78,8 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
         cout << setw(4) << irop << ": " << indicesByRop[irop].size() << endl;
       }
     }
-    for ( Index i2=0; i2<m_c2.size(); ++i2 ) {
-      P2 p2 = m_c2[i2];
+    for ( Index i2=0; i2<m_cm.size(); ++i2 ) {
+      P2 p2 = m_cm[i2];
       Index irop = p2->rop();
       indicesByRop[irop].push_back(i2);
     }
@@ -90,21 +90,21 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
       }
     }
   } else {
-    for ( Index i2=0; i2<m_c2.size(); ++i2 ) {
+    for ( Index i2=0; i2<m_cm.size(); ++i2 ) {
       indicesByRop[0].push_back(i2);
     }
   }
   // Do the matching.
-  for ( const auto& p1 : m_c1 ) {
+  for ( const auto& p1 : m_cr ) {
     if ( dbg > 1 ) cout << myname << "  Reference candidate " << i1 << endl;
     double dmin = maxDistance();
     Status stat = UNMATCHED;
-    Index imin = m_c2.size();
+    Index imin = m_cm.size();
     Index irop = ropMatch ? p1->rop() : 0;
     if ( dbg > 1 ) cout << myname << "  Match vector size for ROP " << irop << " is "
                         << indicesByRop[irop].size() << endl;
     for ( Index i2 : indicesByRop[irop] ) {
-      P2 p2 = m_c2[i2];
+      P2 p2 = m_cm[i2];
       double dis = distance()(*p1, *p2);
       if ( dbg > 1 ) cout << myname << "    Matching candidate " << i2 << " has distance " << dis << endl;
       if ( dis < dmin ) {
@@ -125,25 +125,25 @@ TpcSignalMatcher::TpcSignalMatcher(const C1& c1, const C2& c2, bool ropMatch, in
   // Remove duplicate matches.
   // For now remove the match with fewer bins.
   // Loop over all matches.
-  for ( Index i1=0; i1<m_c1.size(); ++i1 ) {
+  for ( Index i1=0; i1<m_cr.size(); ++i1 ) {
     Status stati = matchStatus(i1);
     if ( stati != MATCHED ) continue;
     unsigned int i2 = matchIndex(i1);
     if ( i2 != badIndex() ) {
       // Loop over later matches.
-      for ( Index j1=i1+1; j1<m_c1.size(); ++j1 ) {
+      for ( Index j1=i1+1; j1<m_cr.size(); ++j1 ) {
         Status statj = matchStatus(i1);
         if ( statj != MATCHED ) continue;
         unsigned int j2 = matchIndex(j1);
         if ( j2 == i2 ) {
-          unsigned int ni2 = c2.at(i2)->size();
-          unsigned int nj2 = c2.at(j2)->size();
-          bool dropj = nj2 < ni2;
-          if ( dropj ) {
-            m_matchStatus[j1] = DUPLICATE;
-          } else {
+          unsigned int nir = cr.at(i1)->size();
+          unsigned int njr = cr.at(j1)->size();
+          bool dropi = nir < njr;
+          if ( dropi ) {
             m_matchStatus[i1] = DUPLICATE;
             break;
+          } else {
+            m_matchStatus[j1] = DUPLICATE;
           }
         }
       }
@@ -189,7 +189,7 @@ Index TpcSignalMatcher::matchIndex(Index iref) const {
 float TpcSignalMatcher::matchDistance(Index iref) const {
   if ( iref >= m_matchIndex.size() ) return -1.0;
   Index i2 = m_matchIndex[iref];
-  if ( i2 >= m_c2.size() ) return -1.0;
+  if ( i2 >= m_cm.size() ) return -1.0;
   return m_matchDistance[iref];
 }
 
@@ -202,6 +202,7 @@ string TpcSignalMatcher::show(int opt) const {
   int wnch = 5;
   int wnti = 5;
   int wnbi = 7;
+  int wsig = 7;
   int wdis = 9;
   if ( opt == 0 ) {
     ssout << setw(widx) << "idx"
@@ -209,19 +210,21 @@ string TpcSignalMatcher::show(int opt) const {
           << " " << setw(wnch) << "Nchan"
           << " " << setw(wnch) << "Ntick"
           << " " << setw(wnbi) << "Nbin"
+          << " " << setw(wsig) << "Signal"
           << " " << setw(wnam) << "Matched"
           << " " << setw(wdis) << "Distance";
-    for ( Index i1=0; i1<m_c1.size(); ++i1 ) {
+    for ( Index i1=0; i1<m_cr.size(); ++i1 ) {
       Status stat = matchStatus(i1);
       ssout << "\n";
       ssout << setw(widx) << i1;
-      ssout << " " << setw(wnam) << m_c1[i1]->name()
-            << " " << setw(wnch) << m_c1[i1]->channelCount()
-            << " " << setw(wnti) << m_c1[i1]->tickCount()
-            << " " << setw(wnbi) << m_c1[i1]->binCount();
+      ssout << " " << setw(wnam) << m_cr[i1]->name()
+            << " " << setw(wnch) << m_cr[i1]->channelCount()
+            << " " << setw(wnti) << m_cr[i1]->tickCount()
+            << " " << setw(wnbi) << m_cr[i1]->binCount()
+            << " " << setw(wsig) << int(m_cr[i1]->tickSignal());
       int i2 = matchIndex(i1);
       if ( stat==MATCHED || stat==DUPLICATE ) {
-        ssout << " " << setw(wnam) << m_c2[i2]->name()
+        ssout << " " << setw(wnam) << m_cm[i2]->name()
               << " " << setw(wdis) << matchDistance(i1);
       }
       if ( stat == DUPLICATE ) ssout << " (duplicate)";
