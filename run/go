@@ -11,8 +11,8 @@ NSKIP=0
 if [ -n "$2" ]; then NSKIP=$2; fi
 NEVT=1
 if [ -n "$3" ]; then NEVT=$3; fi
-GDB=
-if [ -n "$4" ]; then GDB=$2; fi
+DBG=off
+if [ -n "$4" ]; then DBG=$4; fi
 
 AFCL="-c LbTupler.fcl"
 AFCL="-c run.fcl"
@@ -45,16 +45,37 @@ else if [ $ARG -eq 7 ]; then
 else if [ $ARG -eq 8 ]; then
   # MCC3 milliblock
   FILE=$DATADIR/prodcosmics_lbne35t_milliblock_1_20150612T225517_gen_20150613T020241_g4_20150613T023146_detsim_milliblock_20150613T183059_reco_milliblock.root
-fi; fi; fi; fi; fi; fi; fi; fi; fi
+else if [ $ARG -eq 9 ]; then
+  # MCC3 single muon after fixing trac-cluster association problem
+  FILE=$DATADIR/AntiMuonCutEvents_LSU_lbne35t_33_20150612T223011_gen_20150613T005722_g4_20150613T012241_detsim_20150719T141204_reco.root
+else if [ $ARG -eq 10 ]; then
+  # MCC3+ nu -> e
+  FILE=$DATADIR/prodgenie_nu_dune10kt_workspace_19_20150717T205803_gen_979df03b-1748-4ee9-97da-06c605028827_20150717T220354_g4_20150718T001808_detsim.root
+  AFCL="-c runnu.fcl"
+fi; fi; fi; fi; fi; fi; fi; fi; fi; fi; fi
 
 ARGS="-n $NEVT --nskip $NSKIP $AFCL $FILE"
+echo "ARGS = $ARGS"
 
-if [ -n "$GDB" ]; then
+unset ART_DEBUG_CONFIG
+if [ $DBG = gdb -o $DBG = d ]; then
   EXE=`which lar`
   echo $EXE --arg "$ARGS"
   #gdb $EXE --arg "$ARGS"
   echo "gdb --arg lar $ARGS"
   gdb --arg lar $ARGS
-else
+else if [ $DBG = off ]; then
   lar $ARGS | tee run.log
-fi
+else if [ $DBG = fcl -o $DBG = f ]; then
+  export ART_DEBUG_CONFIG=1
+  LOG=fcl$ARG.log
+  lar $ARGS 2>&1 | tee $LOG
+  unset ART_DEBUG_CONFIG
+  echo Output is in $LOG
+else
+  echo "Invalid final parameter: $DBG"
+  echo Allowed values:
+  echo "  off (default) - Run normally."
+  echo "  gdb, d - Run with gdb"
+  echo "  fcl, f - Display FCL parameters"
+fi; fi; fi

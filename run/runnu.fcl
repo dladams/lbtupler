@@ -1,5 +1,7 @@
 #include "LbTupler.fcl"
 
+services.user:  @local::lbne10kt_simulation_services
+
 physics.analyzers.LbTupler.DebugLevel: 2
 
 physics.analyzers.LbTupler.DoMcParticleTree:               true
@@ -19,20 +21,4 @@ physics.analyzers.LbTupler.DoTracks:                       false
 # Range for histograms.
 physics.analyzers.LbTupler.TdcTickMax: 3200
 
-# Which matches to perform
-physics.analyzers.LbTupler.DoMcParticleClusterMatching:    false
-physics.analyzers.LbTupler.DoMcDescendantClusterMatching:  false
-physics.analyzers.LbTupler.DoSimChannelClusterMatching:    true
-physics.analyzers.LbTupler.DoRefClusterClusterMatching:    true
-
-physics.analyzers.LbTupler.RefClusterLabel: "clustercheat"
-#physics.analyzers.LbTupler.ClusterLabel:    "clustercheat"
-physics.analyzers.LbTupler.ClusterLabel:    "dbcluster"
-
-#physics.analyzers.LbTupler.DoSimChannelSignalHists:   true
-#physics.analyzers.LbTupler.DoClusterSignalHists:      true
-#physics.analyzers.LbTupler.DoRefClusterSignalHists:   true
-#physics.analyzers.LbTupler.DoDeconvolutedSignalHists: true
-
-physics.analyzers.LbTupler.DoTracks: true
-physics.analyzers.LbTupler.TrackLabel:    "costrk"
+physics.analyzers.LbTupler.DoMcParticleSignalHists:  true

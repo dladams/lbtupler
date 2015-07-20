@@ -101,6 +101,7 @@ physics:
       DoMcDescendantClusterMatching:  true
       DoSimChannelClusterMatching:    true
       DoRefClusterClusterMatching:    true
+      DoTracks:                       true
 
       # The "module_type" tells us which module to run. The name here
       # matches the name supplied to DEFINE_ART_MODULE near the end of
@@ -145,6 +146,9 @@ physics:
 
       # The same for raw digits.
       RawDigitLabel:   "daq"
+
+      # The same for tracks.
+      TrackLabel:   "costrk"
 
       # Select MC particle gamma from pi0 in place of pi0
       UseGammaNotPi0:   true
