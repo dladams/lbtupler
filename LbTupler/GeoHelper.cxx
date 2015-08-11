@@ -46,15 +46,18 @@ GeoHelper::GeoHelper(const geo::Geometry* pgeo, Status dbg)
   // Find the total number of TPC.
   for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
   // Fill the TPC info w/o ROP or APA.
+  unsigned int iglotpc = 0;
   for ( Index icry=0; icry<ncryostat(); ++icry ) {
-    for ( Index itpc=0; itpc<m_pgeo->NTPC(icry); ++itpc ) {
-      m_ntpp += m_pgeo->Nplanes(itpc, icry);
+    for ( Index icrytpc=0; icrytpc<m_pgeo->NTPC(icry); ++icrytpc ) {
+      m_ntpp += m_pgeo->Nplanes(icrytpc, icry);
       m_tpccry.push_back(icry);
       ostringstream ssname;
       ssname << "TPC";
-      if ( m_ntpc > 9 && itpc < 10 ) ssname << "0";
-      ssname << itpc;
+      if ( m_ntpc > 99 && iglotpc < 100 ) ssname << "0";
+      if ( m_ntpc > 9 && iglotpc < 10 ) ssname << "0";
+      ssname << iglotpc;
       m_tpcname.push_back(ssname.str());
+      ++iglotpc;
     }
   }
   fillStandardApaMapping();
@@ -352,18 +355,21 @@ Status GeoHelper::fillStandardApaMapping() {
   Index nzplane = 0;
   // Loop over cryostats.
   for ( Index icry=0; icry<ncryostat(); ++icry ) {
-    if ( m_dbg > 1 ) cout << myname << "Begin loop over cryostat " << icry << endl;
+    if ( m_dbg > 1 ) cout << myname << "Begin cryostat " << icry << endl;
     // Loop over TPCs in the current cryostat.
     for ( Index icrytpc=0; icrytpc<m_pgeo->NTPC(icry); ++icrytpc ) {
-      if ( m_dbg > 1 ) cout << myname << "Begin loop over TPC " << icrytpc << endl;
+      if ( m_dbg > 1 ) cout << myname << "Begin cryostat " << icry << ",  TPC " << icrytpc << endl;
       const TPCGeo& tpcgeo = m_pgeo->TPC(icrytpc, icry);
-      unsigned int iapa = itpc/2;   // Stanard mapping: one APA for each adjacent pair of TPCs
-      int nplane = m_pgeo->Nplanes(itpc, icry);
+      unsigned int iapa = itpc/2;   // Standard mapping: one APA for each adjacent pair of TPCs
+      int nplane = m_pgeo->Nplanes(icrytpc, icry);
+      if ( nplane == 0 ) {
+        cout << myname << "WARNING: Cryostat " << icry << ", TPC " << icrytpc << " has no planes." << endl;
+      }
       int itdcrop = 0;   // # readouts for this TDC
       m_tpcapa.push_back(iapa);
       // Loop over planes in the TPC.
       for ( int ipla=0; ipla<nplane; ++ipla ) {
-        if ( m_dbg > 1 ) cout << myname << "Begin loop over plane " << ipla << endl;
+        if ( m_dbg > 1 ) cout << myname << "Begin TPC plane " << ipla << endl;
         const PlaneGeo& plageo = tpcgeo.Plane(ipla);
         int nwire = m_pgeo->Nwires(ipla, icrytpc, icry);
         int firstwire = firsttpcplanewire[itpp];
@@ -374,7 +380,7 @@ Status GeoHelper::fillStandardApaMapping() {
         // Loop over wires and find the channels.
         set<int> chans;
         for ( int iwir=0; iwir<nwire; ++iwir ) {
-          int icha = m_pgeo->PlaneWireToChannel(ipla, iwir, itpc, icry);
+          int icha = m_pgeo->PlaneWireToChannel(ipla, iwir, icrytpc, icry);
           chans.insert(icha);
         }
         int nchan = chans.size();
@@ -474,13 +480,14 @@ Status GeoHelper::fillStandardApaMapping() {
         }
         m_tpprop[pid] = irop;
         ++itpp;
-        if ( m_dbg > 1 ) cout << myname << "End loop over planes." << endl;
       }  // End loop over planes in the TPC
       ++itpc;
-      if ( m_dbg > 1 ) cout << myname << "End loop over TPCs." << endl;
+      if ( m_dbg > 1 ) cout << myname << "End TPC " << itpc << " (cryostat " << icry
+                            << ", TPC " << icrytpc << ")" << endl;
     }  // End loop over TPCs in the cryostat
-    if ( m_dbg > 1 ) cout << myname << "End loop over cryostats." << endl;
+    if ( m_dbg > 1 ) cout << myname << "End cryostat " << icry << endl;
   }  // End loop over cryostats
+  if ( m_dbg > 1 ) cout << myname << "End loop over cryostats." << endl;
 
   return 0;
 }

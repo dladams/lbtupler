@@ -89,6 +89,7 @@ physics:
       DoMcParticleTree:               true
       DoSimChannelTree:               true
       DoMcParticleSignalHists:        true
+      DoMcDescendantSignalAllHists:   false
       DoMcDescendantSignalHists:      true
       DoSimChannelSignalHists:        true
       DoRawSignalHists:               true

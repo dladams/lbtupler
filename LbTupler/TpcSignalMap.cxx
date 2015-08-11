@@ -685,6 +685,7 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
     }
     IndexVector mytpcs = tpcs();
     if ( usetpc() ) {
+      out << " uses";
       unsigned int ntpc = mytpcs.size();
       out << setw(3) << ntpc;
       out << " TPC";
@@ -800,6 +801,7 @@ ostream& TpcSignalMap::print(ostream& out, int fulldetail, string hdrprefix, str
 //**********************************************************************
 
 int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
+  int locdbg = dbg();
   const string myname = "TpcSignalMap::splitByRop: ";
   if ( geometryHelper() == nullptr ) {
     cout << myname << "ERROR: Geometry helper not found. " << endl;
@@ -846,23 +848,37 @@ int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
       const HitChannelMap& hitmap = ithv->second;
       Index ch1 = geohelp.ropFirstChannel(irop);
       Index ch2 = ch1 + geohelp.ropNChannel(irop);
-      if ( dbg() ) cout << myname << "Creating map for ROP " << irop << endl;
+      if ( locdbg ) {
+        cout << myname << "Creating map for " << name() << " ROP " << irop;
+        if ( itpc == GeoHelper::badIndex() ) cout << " with no TPC";
+        else cout << ", TPC " << itpc;
+        cout << ", channel range (" << ch1 << ", " << ch2 << ")";
+        cout << endl;
+        cout << myname << "Old map size is " << ticksig.size();
+        if ( ticksig.size() ) cout << " and range is (" << ticksig.begin()->first
+                                   << ", " << ticksig.rbegin()->first << ")";
+        cout << endl;
+      }
       TpcSignalMapPtr psm(new TpcSignalMap("tmp", m_pgh, true));
       for ( Channel ich=ch1; ich<ch2; ++ich ) {
         TickChannelMap::const_iterator its = ticksig.find(ich);
         HitChannelMap::const_iterator ihs = hitmap.find(ich);
+        if ( locdbg ) cout << myname << "  Channel " << ich << ": ";
         if ( its != ticksig.end() ) {
+          if ( locdbg ) cout << " adding signals" << endl;
           for ( auto ticksig : its->second ) {
             psm->addSignal(ich, ticksig.first, ticksig.second, itpc);
           }
+        } else {
+          if ( locdbg ) cout << " no signal" << endl;
         }
         if ( ihs != hitmap.end() ) psm->m_tpchitsig[itpc][ich] = ihs->second;
       }
-      if ( dbg() ) cout << myname << "  ROP " << irop << " has "
+      if ( locdbg ) cout << myname << "  ROP " << irop << " has "
                         << psm->tickCount() << " ticks and "
                         << psm->hitCount() << " hits." << endl;
       if ( psm->tickCount() || psm->m_tpchitsig.size() ) {
-        if ( dbg() ) cout << myname << "  Creating new map." << endl;
+        if ( locdbg ) cout << myname << "  Creating new map." << endl;
         psm->m_name = m_name + geohelp.ropName(irop) + namesuf;
         psm->m_pmci = m_pmci;
         psm->m_rop = irop;
@@ -875,8 +891,8 @@ int TpcSignalMap::splitByRop(TpcSignalMapVector& tsms, bool splitByTpc) const {
             }
           }
         }
-        if ( dbg() ) cout << myname << "Kept " << psm->segments().size()
-                          << " of " << m_segments.size() << endl;
+        if ( locdbg ) cout << myname << "  Kept " << psm->segments().size()
+                          << " of " << m_segments.size() << " segments" << endl;
         tsms.push_back(psm);
       }
     }  // End loop over TPCs

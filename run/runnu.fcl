@@ -19,6 +19,8 @@ physics.analyzers.LbTupler.DoRefClusterSignalHists:        false
 physics.analyzers.LbTupler.DoTracks:                       false
 
 # Range for histograms.
-physics.analyzers.LbTupler.TdcTickMax: 3200
+physics.analyzers.LbTupler.TdcTickMax: 8000
 
-physics.analyzers.LbTupler.DoMcParticleSignalHists:  true
+#physics.analyzers.LbTupler.DoMcParticleSignalHists:        true
+physics.analyzers.LbTupler.DoMcDescendantSignalAllHists:   true
+physics.analyzers.LbTupler.DoMcDescendantSignalHists:      true

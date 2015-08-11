@@ -163,6 +163,7 @@ private:
   bool fDoMcParticleTree;              // Create the McParticle tree.
   bool fDoSimChannelTree;              // Create the SimChannel tree.
   bool fDoMcParticleSignalHists;       // Create signal histograms for McParticles
+  bool fDoMcDescendantSignalAllHists;  // Create signal histograms for McParticle descendants all tracks
   bool fDoMcDescendantSignalHists;     // Create signal histograms for McParticle descendants
   bool fDoSimChannelSignalHists;       // Create signal histograms for SimChannels
   bool fDoRawSignalHists;              // Create signal histograms for the RawDigits
@@ -345,6 +346,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
   fDoMcParticleTree              = p.get<bool>("DoMcParticleTree");
   fDoSimChannelTree              = p.get<bool>("DoSimChannelTree");
   fDoMcParticleSignalHists       = p.get<bool>("DoMcParticleSignalHists");
+  fDoMcDescendantSignalAllHists  = p.get<bool>("DoMcDescendantSignalAllHists");
   fDoMcDescendantSignalHists     = p.get<bool>("DoMcDescendantSignalHists");
   fDoSimChannelSignalHists       = p.get<bool>("DoSimChannelSignalHists");
   fDoRawSignalHists              = p.get<bool>("DoRawSignalHists");
@@ -381,7 +383,8 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
 
   // Derived control flags.
   fDoMcParticleSignalMaps   = fDoMcParticleSignalHists   || fDoMcParticleClusterMatching;
-  fDoMcDescendantSignalMaps = fDoMcDescendantSignalHists || fDoMcDescendantClusterMatching;
+  fDoMcDescendantSignalMaps = fDoMcDescendantSignalAllHists ||fDoMcDescendantSignalHists ||
+                              fDoMcDescendantClusterMatching;
   fDoSimChannelSignalMaps   = fDoSimChannelSignalHists   || fDoSimChannelClusterMatching;
   fDoClusterSignalMaps = fDoClusterSignalHists ||
                          fDoMcParticleClusterMatching || fDoMcDescendantClusterMatching ||
@@ -408,6 +411,7 @@ void LbTupler::reconfigure(fhicl::ParameterSet const& p) {
     cout << prefix << setw(wlab) << "DoMcParticleTree" << sep << fDoMcParticleTree << endl;
     cout << prefix << setw(wlab) << "DoSimChannelTree" << sep << fDoSimChannelTree << endl;
     cout << prefix << setw(wlab) << "DoMcParticleSignalHists" << sep << fDoMcParticleSignalHists << endl;
+    cout << prefix << setw(wlab) << "DoMcDescendantSignalAllHists" << sep << fDoMcDescendantSignalAllHists << endl;
     cout << prefix << setw(wlab) << "DoMcDescendantSignalHists" << sep << fDoMcDescendantSignalHists << endl;
     cout << prefix << setw(wlab) << "DoSimChannelSignalHists" << sep << fDoSimChannelSignalHists << endl;
     cout << prefix << setw(wlab) << "DoDeconvolutedSignalHists" << sep << fDoDeconvolutedSignalHists << endl;
@@ -672,7 +676,7 @@ void LbTupler::analyze(const art::Event& event) {
         }  // End loop over selected MC tracks
       }
       if ( fDoMcDescendantSignalMaps ) {
-        if ( fdbg > 0 ) cout << myname << "Summary of selected MC particle plus descendant signal maps (size = "
+        if ( fdbg > 0 ) cout << myname << "Summary of selected MD particle signal maps (size = "
                              << selectedMcTpcSignalMapsMD.size() << "):" << endl;
         for ( auto pmctp : selectedMcTpcSignalMapsMD ) {
           pmctp->print(cout, flag, myname + "  ");
@@ -716,13 +720,17 @@ void LbTupler::analyze(const art::Event& event) {
     }
 
     // Create the event channel-tick bin histograms for all selected MC particles with descendants.
-    if ( fDoMcDescendantSignalHists ) {
+    if ( fDoMcDescendantSignalAllHists ) {
       if ( fdbg > 1 ) cout << myname << "Create and fill MC descendant histograms for all selected tracks." << endl;
       for ( unsigned int irop=0; irop<geohelp.nrop(); ++irop ) {
-        TH2* ph = hcreateSim.create("mcd" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
-                                          "MC par+desc signals for " + geohelp.ropName(irop));
-        for ( auto pmctp : selectedMcTpcSignalMapsMD ) pmctp->fillRopChannelTickHist(ph, irop);
-        if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+        unsigned int nbin = 0;
+        for ( auto pmctp : selectedMcTpcSignalMapsMD ) nbin += pmctp->ropNbin(irop);
+        if ( nbin ) {
+          TH2* ph = hcreateSim.create("mcd" + geohelp.ropName(irop), 0, geohelp.ropNChannel(irop),
+                                            "MC par+desc signals for " + geohelp.ropName(irop));
+          for ( auto pmctp : selectedMcTpcSignalMapsMD ) pmctp->fillRopChannelTickHist(ph, irop);
+          if ( fdbg > 1 ) summarize2dHist(ph, myname, wnam, 4, 4);
+        }
       }
     }
 
