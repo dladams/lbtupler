@@ -1,3 +1,13 @@
+void add35tTpcs() {
+  const int ntpc = 8;
+  float xmin[ntpc] = {-34.45, -0.75, -34.45, -0.75, -34.45, 0.75, -34.45, 0.75};
+  float xmax[ntpc] = {-7.28, 221.73, -7.28, 221.73, -7.28, 221.73, -7.28, 221.73};
+  float ymin[ntpc] = {-79.94, -79.94, -89.05, -89.05, 3.83, 3.83, -79.94, -79.94};
+  float ymax[ntpc] = {116.97, 116.97, -3.83, -3.83, 116.97, 116.97, 116.97, 116.97};
+  float zmin[ntpc] = {-2.04, -2.04, 51.41, 51.41, 51.41, 51.41, 103.33, 103.33};
+  float zmax[ntpc] = {51.41, 51.41, 103.33, 103.33, 103.33, 103.33, 156.78, 156.78};
+}
+
 TCanvas* drawTracks(string sel, string var ="pty:ptz:ptx", string hvar="") {
   int dbg = 1;
   if ( simtree() == 0 ) return 0;

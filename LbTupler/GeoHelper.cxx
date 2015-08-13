@@ -87,14 +87,10 @@ unsigned int GeoHelper::ncryostat() const {
 
 int GeoHelper::tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const {
   const TPCGeo& tpcgeo = m_pgeo->TPC(itpc, icry);
-  double origin[3] = {0.0, 0.0, 0.0};
-  double tpcpos[3] = {0.0, 0.0, 0.0};
-  tpcgeo.LocalToWorld(origin, tpcpos);
-  double haflen[3] = {tpcgeo.ActiveHalfWidth(), tpcgeo.ActiveHalfHeight(), 0.5*tpcgeo.ActiveLength()};
-  for ( unsigned int ixyz=0; ixyz<3; ++ixyz ) {
-    pos1[ixyz] = tpcpos[ixyz] - haflen[ixyz];
-    pos2[ixyz] = tpcpos[ixyz] + haflen[ixyz];
-  }
+  double locpos2[3] = {tpcgeo.ActiveHalfWidth(), tpcgeo.ActiveHalfHeight(), 0.5*tpcgeo.ActiveLength()};
+  double locpos1[3] = {-locpos2[0], -locpos2[1], -locpos2[2]};
+  tpcgeo.LocalToWorld(locpos1, pos1);
+  tpcgeo.LocalToWorld(locpos2, pos2);
   return 0;
 }
 
