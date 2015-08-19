@@ -23,6 +23,7 @@ using std::set;
 using std::string;
 using util::LArProperties;
 using util::DetectorProperties;
+using geo::TPCID;
 using geo::TPCGeo;
 using geo::PlaneID;
 using geo::PlaneGeo;
@@ -41,8 +42,8 @@ Index GeoHelper::badIndex() {
 
 //**********************************************************************
 
-GeoHelper::GeoHelper(const geo::Geometry* pgeo, Status dbg)
-: m_pgeo(pgeo), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
+GeoHelper::GeoHelper(const geo::GeometryCore* pgeo, bool useChannels, Status dbg)
+: m_pgeo(pgeo), m_haveChannelMap(useChannels), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
   // Find the total number of TPC.
   for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
   // Fill the TPC info w/o ROP or APA.
@@ -60,21 +61,29 @@ GeoHelper::GeoHelper(const geo::Geometry* pgeo, Status dbg)
       ++iglotpc;
     }
   }
-  fillStandardApaMapping();
+  if ( useChannels) fillStandardApaMapping();
 }
 
 //**********************************************************************
 
-DetectorProperties& GeoHelper::detectorProperties() const {
-  static DetectorProperties& ref = *art::ServiceHandle<DetectorProperties>();
-  return ref;
+DetectorProperties* GeoHelper::detectorProperties() const {
+  try {
+    static DetectorProperties* pref = art::ServiceHandle<DetectorProperties>().operator->();
+    return pref;
+  } catch(...) {
+    return nullptr;
+  }
 }
 
 //**********************************************************************
 
-LArProperties& GeoHelper::larProperties() const {
-  static LArProperties& ref = *art::ServiceHandle<LArProperties>();
-  return ref;
+LArProperties* GeoHelper::larProperties() const {
+  try {
+    static LArProperties* pref = art::ServiceHandle<LArProperties>().operator->();
+    return pref;
+  } catch(...) {
+    return nullptr;
+  }
 }
 
 //**********************************************************************
@@ -85,9 +94,45 @@ unsigned int GeoHelper::ncryostat() const {
 
 //**********************************************************************
 
+double GeoHelper::width(unsigned int icry, unsigned int itpc, bool useActive) const {
+  TPCID tpcid(icry, itpc);
+  if ( ! tpcid ) return 0.0;
+  const TPCGeo* ptpcgeo = m_pgeo->TPCPtr(tpcid);
+  if ( ptpcgeo == nullptr ) return 0.0;
+  if ( useActive ) return 2.0*ptpcgeo->ActiveHalfWidth();
+  return 2.0*ptpcgeo->HalfWidth();
+}
+
+//**********************************************************************
+
+double GeoHelper::height(unsigned int icry, unsigned int itpc, bool useActive) const {
+  TPCID tpcid(icry, itpc);
+  if ( ! tpcid ) return 0.0;
+  const TPCGeo* ptpcgeo = m_pgeo->TPCPtr(tpcid);
+  if ( ptpcgeo == nullptr ) return 0.0;
+  if ( useActive ) return 2.0*ptpcgeo->ActiveHalfHeight();
+  return 2.0*ptpcgeo->HalfHeight();
+}
+
+//**********************************************************************
+
+double GeoHelper::length(unsigned int icry, unsigned int itpc, bool useActive) const {
+  TPCID tpcid(icry, itpc);
+  if ( ! tpcid ) return 0.0;
+  const TPCGeo* ptpcgeo = m_pgeo->TPCPtr(tpcid);
+  if ( ptpcgeo == nullptr ) return 0.0;
+  if ( useActive ) return ptpcgeo->ActiveLength();
+  return ptpcgeo->Length();
+}
+
+//**********************************************************************
+
 int GeoHelper::tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const {
+  bool useActive = false;
   const TPCGeo& tpcgeo = m_pgeo->TPC(itpc, icry);
-  double locpos2[3] = {tpcgeo.ActiveHalfWidth(), tpcgeo.ActiveHalfHeight(), 0.5*tpcgeo.ActiveLength()};
+  double locpos2[3] = {0.5*width(icry, itpc, useActive),
+                       0.5*height(icry, itpc, useActive),
+                       0.5*length(icry, itpc, useActive)};
   double locpos1[3] = {-locpos2[0], -locpos2[1], -locpos2[2]};
   tpcgeo.LocalToWorld(locpos1, pos1);
   tpcgeo.LocalToWorld(locpos2, pos2);
@@ -115,7 +160,11 @@ PlanePositionVector GeoHelper::planePositions(const double postim[]) const {
     cout << myname << "ERROR: Geometry is null." << endl;
     return pps;
   }
-  double samplingrate = detectorProperties().SamplingRate();
+  if ( detectorProperties() == nullptr ) {
+    cout << myname << "ERROR: Detector properties not found." << endl;
+    return pps;
+  }
+  double samplingrate = detectorProperties()->SamplingRate();
   if ( samplingrate <= 0 ) {
     cout << myname << "ERROR: Invalid sampling rate." << endl;
     return pps;
@@ -126,7 +175,7 @@ PlanePositionVector GeoHelper::planePositions(const double postim[]) const {
   for ( unsigned int ipla=0; ipla<nplane; ++ipla ) {
     PlaneID tpp(tpcid, ipla);
     unsigned int irop = rop(tpp);
-    double tick = detectorProperties().ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
+    double tick = detectorProperties()->ConvertXToTicks(postim[0], ipla, tpcid.TPC, tpcid.Cryostat);
     double tickoff = postim[3]/samplingrate;
     tick += tickoff;
     if ( m_dbg > 2 ) cout << myname << "Tick offset: " << tickoff << " = " << postim[3] << "/" << samplingrate << endl;
@@ -155,25 +204,31 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     return out;
   }
   cout << prefix << "             Total # TPCs: " << ntpc() << endl;
-  cout << prefix << "     Total # TPC channels: " << geometry()->Nchannels() << endl;
+  if ( haveChannelMap() ) {
+    cout << prefix << "     Total # TPC channels: " << geometry()->Nchannels() << endl;
+  }
 #ifdef LARSOFT0401
   cout << prefix << "Total # optical detectors: " << geometry()->NOpDet() << endl;
 #else
   cout << prefix << "Total # optical detectors: " << geometry()->NOpDets() << endl;
 #endif
-  cout << prefix << " Total # optical channels: " << geometry()->NOpChannels() << endl;
-  cout << prefix << endl;
-  cout << prefix << "There are " << ntpc() << " TPCs:" << endl;
-  cout << prefix << "      name       APA" << endl;
-  for ( unsigned int itpc=0; itpc<ntpc(); ++itpc ) {
-    cout << prefix << setw(10) << tpcName(itpc) << setw(10) << tpcApa(itpc) << endl;
+  if ( haveChannelMap() ) {
+    cout << prefix << " Total # optical channels: " << geometry()->NOpChannels() << endl;
   }
   cout << prefix << endl;
-  cout << prefix << "There are " << nrop() << " ROPs (readout planes):" << endl;
-  cout << prefix << "      name  1st chan     #chan  orient" << endl;
-  for ( unsigned int irop=0; irop<nrop(); ++irop ) {
-    cout << prefix << setw(10) << ropName(irop) << setw(10) << ropFirstChannel(irop)
-         << setw(10) << ropNChannel(irop) << setw(8) << ropView(irop) << endl;
+  cout << prefix << "There are " << ntpc() << " TPCs:" << endl;
+  if ( haveChannelMap() ) {
+    cout << prefix << "      name       APA" << endl;
+    for ( unsigned int itpc=0; itpc<ntpc(); ++itpc ) {
+      cout << prefix << setw(10) << tpcName(itpc) << setw(10) << tpcApa(itpc) << endl;
+    }
+    cout << prefix << endl;
+    cout << prefix << "There are " << nrop() << " ROPs (readout planes):" << endl;
+    cout << prefix << "      name  1st chan     #chan  orient" << endl;
+    for ( unsigned int irop=0; irop<nrop(); ++irop ) {
+      cout << prefix << setw(10) << ropName(irop) << setw(10) << ropFirstChannel(irop)
+           << setw(10) << ropNChannel(irop) << setw(8) << ropView(irop) << endl;
+    }
   }
 
   unsigned int wlab = 30;
@@ -188,13 +243,15 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     sslab << "Cryostat " << icry << " TPC count: ";
     out << prefix << setw(wlab) << sslab.str() << m_pgeo->NTPC(icry) << endl;
   }
-  out << prefix << setw(wlab) <<"TPC channel count: " << m_pgeo->Nchannels() << endl;
+  if ( haveChannelMap() ) {
+    out << prefix << setw(wlab) <<"TPC channel count: " << m_pgeo->Nchannels() << endl;
 #ifdef LARSOFT0401
-  out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDet() << endl;
+    out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDet() << endl;
 #else
-  out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDets() << endl;
+    out << prefix << setw(wlab) <<"Optical channel count: " << m_pgeo->NOpDets() << endl;
 #endif
-  out << prefix << setw(wlab) <<"Scintillator channel count: " << m_pgeo->NAuxDets() << endl;
+    out << prefix << setw(wlab) <<"Scintillator channel count: " << m_pgeo->NAuxDets() << endl;
+  }
   out << prefix << "TPC sizes [cm]:" << endl;
   out << prefix << setw(wcry) << "Cry" << setw(wtpc) << "TPC"
       << setw(wdim) << "Width" << setw(wdim) << "Height"<< setw(wdim) << "Length"
@@ -212,6 +269,7 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     }  // end loop over TPCs
   }  // end loop over cryostats
   // Display size and position of each TPC.
+  bool useActive = false;
   for ( unsigned int icry=0; icry<ncry; ++icry ) {
     for ( unsigned int itpc=0; itpc<m_pgeo->NTPC(icry); ++itpc ) {
       const TPCGeo& tpcgeo = m_pgeo->TPC(itpc, icry);
@@ -219,9 +277,9 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
       double tpcpos[3] = {0.0, 0.0, 0.0};
       tpcgeo.LocalToWorld(origin, tpcpos);
       out << prefix << setw(wcry) << icry << setw(wtpc) << itpc
-          << setw(wdim) << 2.0*tpcgeo.ActiveHalfWidth()
-          << setw(wdim) << 2.0*tpcgeo.ActiveHalfHeight()
-          << setw(wdim) <<     tpcgeo.ActiveLength()
+          << setw(wdim) <<  width(icry, itpc, useActive)
+          << setw(wdim) << height(icry, itpc, useActive)
+          << setw(wdim) << length(icry, itpc, useActive)
           << setw(wdim) << tpcpos[0]
           << setw(wdim) << tpcpos[1]
           << setw(wdim) << tpcpos[2]
@@ -257,43 +315,40 @@ ostream& GeoHelper::print(ostream& out, int iopt, std::string prefix) const {
     }  // end loop over TPCs
   }  // end loop over cryostats
   // Display ROPs.
-  cout << prefix << "Detector ROP count: " << nrop() << endl;
-  cout << prefix << setw(4) << "ROP" << setw(12) << "Name"
-       << setw(5) << "View" << setw(8) << "1st ch" << setw(6) << "Nchan" << setw(6) << "TPCs" << endl;
-  for ( Index irop=0; irop<nrop(); ++irop ) {
-    ostringstream ssrops;
-    for ( Index itpc : ropTpcs(irop) ) {
-      if ( ssrops.str().size() ) ssrops << ",";
-      ssrops << itpc;
-    }
-    cout << prefix << setw(4) << irop << setw(12) << ropName(irop)
-         << setw(5) << ropView(irop) << setw(8) << ropFirstChannel(irop)
-         << setw(6) << ropNChannel(irop) << setw(6) << ssrops.str();
-    cout << endl;
-  }
-/*
-      const double* pos0 = tpcgeo.PlaneLocation(0);
-      const double* pos1 = tpcgeo.PlaneLocation(1);
-      const double* pos2 = tpcgeo.PlaneLocation(2);
-      if ( (pos1[1] != pos0[1]) || (pos2[1] != pos0[1]) || (pos1[2] != pos0[2]) ||(pos2[2] != pos0[2]) ) {
-        out << prefix << "WARNING: Cryostat " << icry << " TPC " << itpc
-            << " 2nd or 3rd plane has unexpected position:" << endl;
-        out << prefix << setw(wdim) << pos0[0] << setw(wdim) << pos0[1] << setw(wdim) << pos0[2] << endl;
-        out << prefix << setw(wdim) << pos1[0] << setw(wdim) << pos1[1] << setw(wdim) << pos1[2] << endl;
-        out << prefix << setw(wdim) << pos2[0] << setw(wdim) << pos2[1] << setw(wdim) << pos2[2] << endl;
-        continue;
+  if ( haveChannelMap() ) {
+    cout << prefix << "Detector ROP count: " << nrop() << endl;
+    cout << prefix << setw(4) << "ROP" << setw(12) << "Name"
+         << setw(5) << "View" << setw(8) << "1st ch" << setw(6) << "Nchan" << setw(6) << "TPCs" << endl;
+    for ( Index irop=0; irop<nrop(); ++irop ) {
+      ostringstream ssrops;
+      for ( Index itpc : ropTpcs(irop) ) {
+        if ( ssrops.str().size() ) ssrops << ",";
+        ssrops << itpc;
       }
-*/
-  //out << prefix << setw(wlab) <<"TPC plane count: " << m_pgeo->Nplanes(itpc, icry) << endl;
-  //out << prefix << setw(wlab) <<"TPC wire count: " << m_pgeo->Nwires(ipla, itpc, icry) << endl;
-  //out << prefix << setw(wlab) <<"TPC view count: " << m_pgeo->Nviews() << endl;
+      cout << prefix << setw(4) << irop << setw(12) << ropName(irop)
+           << setw(5) << ropView(irop) << setw(8) << ropFirstChannel(irop)
+           << setw(6) << ropNChannel(irop) << setw(6) << ssrops.str();
+      cout << endl;
+    }
+  }
   // Show LAr properties.
-  double driftspeed = larProperties().DriftVelocity();
-  double samplingrate = detectorProperties().SamplingRate();
-  double samplingdriftspeed = driftspeed*samplingrate/1000.0;
-  if ( m_dbg > 0 ) cout << prefix << "LAr drift speed = " << driftspeed << " cm/us" << endl;
-  if ( m_dbg > 0 ) cout << prefix << "Sampling period = " << samplingrate << " ns" << endl;
-  if ( m_dbg > 0 ) cout << prefix << "Sampling speed = " << samplingdriftspeed << " cm/tick" << endl;
+  double driftspeed = 0.0;
+  if ( larProperties() == nullptr ) {
+    cout << prefix << "LAr properties not found." << endl;
+  } else {
+    driftspeed = larProperties()->DriftVelocity();
+    cout << prefix << "LAr drift speed = " << driftspeed << " cm/us" << endl;
+  }
+  if ( detectorProperties() == nullptr ) {
+    cout << prefix << "Detector properties not found." << endl;
+  } else {
+    double samplingrate = detectorProperties()->SamplingRate();
+    cout << prefix << "Sampling period = " << samplingrate << " ns" << endl;
+    if ( driftspeed > 0.0 ) {
+      double samplingdriftspeed = driftspeed*samplingrate/1000.0;
+      cout << prefix << "Sampling speed = " << samplingdriftspeed << " cm/tick" << endl;
+    }
+  }
 
   return out;
 }

@@ -8,18 +8,23 @@
 #include "fhiclcpp/ParameterSet.h"
 #include "fhiclcpp/make_ParameterSet.h"
 #include "Geometry/GeometryCore.h"
+#include "Geometry/ChannelMapAlg.h"
+#include "lbne/Geometry/ChannelMap35OptAlg.h"
+#include "lbne/Geometry/ChannelMapAPAAlg.h"
 
 #include <string>
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <cassert>
+#include <memory>
 
 using std::string;
 using std::cout;
 using std::endl;
 using std::ostringstream;
 using std::vector;
+using std::shared_ptr;
 using geo::TPCID;
 using geo::TPCGeo;
 
@@ -43,17 +48,17 @@ bool inrange(double x, double x1, double x2) {
 int main(int narg, char** argv) {
   //string geopath = "services.Geometry";
   const string myname = "test_geometry: ";
-  string gname = "lbne10kt";
+  vector<string> gnames = {"lbne10kt", "lbne35t", "lbne35t4apa_v4", "dune10kt_v1", "lbne35t4apa_v5"};
+  string gname = gnames[2];
   if ( narg > 1 ) {
     gname = argv[1];
   }
-  vector<string> gnames = {"lbne10kt", "lbne35t"};
   // (xref,yref,zref) is a point inside a TPC
-  vector<double> xref = {-500.0, 0.0};
-  vector<double> yref = {   0.0, 0.0};
-  vector<double> zref = {   0.0, 0.0};
-  vector<int> ncryExp = {2, 1};
-  vector<int> ntpcExp = {120, 6};
+  vector<double> xref = {-500.0, 0.0, 0.0, -500.0, 0.0};
+  vector<double> yref = {   0.0, 0.0, 0.0,    0.0, 0.0};
+  vector<double> zref = {   0.0, 0.0, 0.0,    0.0, 0.0};
+  vector<int> ncryExp = {2, 1, 1, 1, 1};
+  vector<int> ntpcExp = {120, 6, 8, 300, 8};
   cout << "Checking geometry name: " << gname << endl;
   unsigned int ndet = gnames.size();
   unsigned int idet = 0;
@@ -74,6 +79,7 @@ SurfaceY: 0
   fhicl::make_ParameterSet(spar, parset);
   geo::GeometryCore* pgeo = new geo::GeometryCore(parset);
   // Load the geometry.
+  cout << "Loading geometry." << endl;
   string gdmlfile = gname + ".gdml";
   string rootfile = gdmlfile;
   string fullgdmlfile = gdmlfile;
@@ -86,6 +92,27 @@ SurfaceY: 0
   cout << myname << "GDML file: " << fullgdmlfile << endl;
   cout << myname << "ROOT file: " << fullrootfile << endl;
   pgeo->LoadGeometryFile(fullgdmlfile, fullrootfile);
+  // Load the channel map.
+  cout << myname << "Loading channel map." << endl;
+  //string spar2 = "SortingParameters: {}";
+  string spar2 = "SortingParameters: {DetectorVersion: \"" + gname + "\"}";
+  cout << myname << "Config:\n" << spar2 << endl;
+  fhicl::ParameterSet parset2;
+  fhicl::make_ParameterSet(spar2, parset2);
+  bool haveChannels = false;
+  shared_ptr<geo::ChannelMapAlg> pChannelMap;
+  if        ( idet == 0 || idet == 3 ) {
+    pChannelMap.reset(new geo::ChannelMapAPAAlg(parset2));
+  } else if ( idet == 2 || idet == 4 ) {
+    pChannelMap.reset(new geo::ChannelMap35OptAlg(parset2));
+  }
+  if ( pChannelMap ) {
+    cout << myname << "Applying channel map." << endl;
+    pgeo->ApplyChannelMap(pChannelMap);
+    haveChannels = true;
+  } else {
+    cout << myname << "No channel map applied." << endl;
+  }
   // Test the geometry.
   cout << myname << "Retrieving basic geometry info" << endl;
   int ncry = pgeo->Ncryostats();
@@ -95,6 +122,13 @@ SurfaceY: 0
   double totmass = pgeo->TotalMass();
   double pos[3] = {xref[idet], yref[idet], zref[idet]};
   TPCID tid = pgeo->FindTPCAtPosition(pos);
+  cout << myname << "Fetching # channels." << endl;
+  unsigned int nchan = 0;
+  if ( haveChannels ) {
+    nchan = pgeo->Nchannels();
+  }
+  cout << myname << "Fetched # channels." << endl;
+  cout << myname << "      # channels: " << nchan << endl;
   assert(tid.isValid);
   TPCGeo tgeo = pgeo->TPC(tid);
   cout << myname << "Displaying basic geometry info" << endl;
@@ -107,6 +141,7 @@ SurfaceY: 0
                                          << ", " << pos[2] << ")" << endl;
   cout << myname << "   Reference cry: " << tid.Cryostat << endl;
   cout << myname << "   Reference TPC: " << tid.TPC << endl;
+  cout << myname << "      # channels: " << nchan << endl;
   cout << myname << "Checking basic geometry info" << endl;
   assert(detname==gname);
   assert(ncry==ncryExp[idet]);

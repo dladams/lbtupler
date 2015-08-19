@@ -17,7 +17,7 @@
 #include "PlanePosition.h"
 
 namespace geo {
-class Geometry;
+class GeometryCore;
 }
 namespace util {
 class LArProperties;
@@ -44,16 +44,25 @@ public:
 
   // Ctor from LArSoft geometry service and detector properties.
   // Note: DetectorProperties has non-const methods.
-  GeoHelper(const geo::Geometry* pgeo, Status dbg =0);
+  GeoHelper(const geo::GeometryCore* pgeo, bool useChannels, Status dbg =0);
 
   // Return the geometry.
-  const geo::Geometry* geometry() const { return m_pgeo; }
+  const geo::GeometryCore* geometry() const { return m_pgeo; }
+
+  // Do we have channel mapping.
+  bool haveChannelMap() const { return m_haveChannelMap; }
 
   // Return the LAr properties.
-  util::LArProperties& larProperties() const;
+  util::LArProperties* larProperties() const;
 
   // Return the detector properties.
-  util::DetectorProperties& detectorProperties() const;
+  util::DetectorProperties* detectorProperties() const;
+
+  // Return dimensions for a TPC.
+  // useActive = true for the "active" dimensions.
+  double  width(unsigned int icry, unsigned int itpc, bool useActive =false) const;
+  double height(unsigned int icry, unsigned int itpc, bool useActive =false) const;
+  double length(unsigned int icry, unsigned int itpc, bool useActive =false) const;
 
   // Return the corners of the active TPC volume.
   Status tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const;
@@ -112,7 +121,8 @@ private:
 
 private:
 
-  const geo::Geometry* m_pgeo;
+  const geo::GeometryCore* m_pgeo;
+  bool m_haveChannelMap;        // Does the geometry have a channel map.
   Status m_dbg;
   Index m_ntpc;                 // Total # TPCs in the detector
   Index m_ntpp;                 // Total # TPC planes in the detector
