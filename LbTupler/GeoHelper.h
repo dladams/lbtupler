@@ -64,7 +64,10 @@ public:
   double height(unsigned int icry, unsigned int itpc, bool useActive =false) const;
   double length(unsigned int icry, unsigned int itpc, bool useActive =false) const;
 
-  // Return the corners of the active TPC volume.
+  // Return the center of a TPC volume.
+  Status tpcCenter(unsigned int icry, unsigned int itpc, double* pos) const;
+
+  // Return the corners of a TPC volume.
   Status tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const;
 
   // Total number of cryostats.

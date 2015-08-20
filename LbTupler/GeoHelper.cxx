@@ -127,6 +127,15 @@ double GeoHelper::length(unsigned int icry, unsigned int itpc, bool useActive) c
 
 //**********************************************************************
 
+int GeoHelper::tpcCenter(unsigned int icry, unsigned int itpc, double* pos) const {
+  const TPCGeo& tpcgeo = m_pgeo->TPC(itpc, icry);
+  double locpos[3] = {0.0, 0.0, 0.0};
+  tpcgeo.LocalToWorld(locpos, pos);
+  return 0;
+}
+
+//**********************************************************************
+
 int GeoHelper::tpcCorners(unsigned int icry, unsigned int itpc, double* pos1, double* pos2) const {
   bool useActive = false;
   const TPCGeo& tpcgeo = m_pgeo->TPC(itpc, icry);
