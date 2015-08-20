@@ -7,7 +7,7 @@ cet_test(test_geometry SOURCES test_geometry.cxx
 )
 
 cet_test(draw_geometry SOURCES draw_geometry.cxx
-  LIBRARIES LbTupler ${ROOT_EVE_LIB_LIST}
+  LIBRARIES LbTupler
 )
 
 install_headers()

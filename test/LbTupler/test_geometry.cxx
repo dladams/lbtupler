@@ -49,7 +49,7 @@ int main(int narg, char** argv) {
   //string geopath = "services.Geometry";
   const string myname = "test_geometry: ";
   vector<string> gnames = {"lbne10kt", "lbne35t", "lbne35t4apa_v4", "dune10kt_v1", "lbne35t4apa_v5"};
-  string gname = gnames[2];
+  string gname = gnames[3];
   if ( narg > 1 ) {
     gname = argv[1];
   }

@@ -19,6 +19,7 @@ art_make(BASENAME_ONLY
            ${MF_MESSAGELOGGER}
            ${MF_UTILITIES}
            ${CETLIB}
+           ${ROOT_EVE_LIB_LIST}
            ${ROOT_BASIC_LIB_LIST}
            ${Boost_SYSTEM_LIBRARY}
          MODULE_LIBRARIES
