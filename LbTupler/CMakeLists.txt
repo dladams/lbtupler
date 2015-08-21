@@ -1,12 +1,14 @@
 
 art_make(BASENAME_ONLY
          LIB_LIBRARIES
+           lbne_Geometry
            Geometry_service
            Geometry
            LArProperties_service
            DetectorProperties_service
            RawData
            RecoBase
+           fhiclcpp
            ${SIMULATIONBASE}
            ${ART_FRAMEWORK_CORE}
            ${ART_FRAMEWORK_PRINCIPAL}

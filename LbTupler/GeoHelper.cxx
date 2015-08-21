@@ -1,15 +1,18 @@
 // GeoHelper.cxx
 
 #include "GeoHelper.h"
-#include "Geometry/Geometry.h"
-#include "Utilities/DetectorProperties.h"
-#include "Utilities/LArProperties.h"
-#include "Geometry/TPCGeo.h"
-#include "Geometry/PlaneGeo.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <set>
+#include <memory>
+#include "Utilities/DetectorProperties.h"
+#include "Utilities/LArProperties.h"
+#include "Geometry/GeometryCore.h"
+#include "Geometry/TPCGeo.h"
+#include "Geometry/PlaneGeo.h"
+#include "lbne/Geometry/ChannelMap35OptAlg.h"
+#include "lbne/Geometry/ChannelMapAPAAlg.h"
 
 #undef LARSOFT0401
 
@@ -21,6 +24,7 @@ using std::setw;
 using std::vector;
 using std::set;
 using std::string;
+using std::shared_ptr;
 using util::LArProperties;
 using util::DetectorProperties;
 using geo::TPCID;
@@ -44,8 +48,8 @@ Index GeoHelper::badIndex() {
 
 GeoHelper::GeoHelper(const geo::GeometryCore* pgeo, bool useChannels, Status dbg)
 : m_pgeo(pgeo), m_haveChannelMap(useChannels), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
-  // Find the total number of TPC.
-  for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
+  // Find the total # TPCs.
+  ntpc();
   // Fill the TPC info w/o ROP or APA.
   unsigned int iglotpc = 0;
   for ( Index icry=0; icry<ncryostat(); ++icry ) {
@@ -62,6 +66,53 @@ GeoHelper::GeoHelper(const geo::GeometryCore* pgeo, bool useChannels, Status dbg
     }
   }
   if ( useChannels) fillStandardApaMapping();
+}
+
+//**********************************************************************
+
+GeoHelper::GeoHelper(std::string gname, bool useChannels, Status dbg)
+: m_pgeo(nullptr), m_haveChannelMap(false), m_dbg(dbg), m_ntpc(0), m_ntpp(0), m_napa(0), m_nrop(0) {
+  string myname = "GeoHelper::ctor: ";
+  // Configure the geometry.
+  string spar = "Name: \"" + gname + "\"\nDisableWiresInG4: true\nSurfaceY: 0";
+  cout << myname << "Config: \n" << spar << endl;
+  fhicl::ParameterSet parset;
+  fhicl::make_ParameterSet(spar, parset);
+  geo::GeometryCore* pdetgeo = new geo::GeometryCore(parset);
+  // Load the geometry.
+  string gdmlfile = gname + ".gdml";
+  string rootfile = gdmlfile;
+  string fullgdmlfile = gdmlfile;
+  string fullrootfile;
+  cet::search_path sp("FW_SEARCH_PATH");
+  if ( ! sp.find_file(rootfile, fullrootfile) ) {
+    cout << myname << "Unable to find the root geometry file: " << rootfile << endl;
+    return;
+  }
+  cout << myname << "GDML file: " << fullgdmlfile << endl;
+  cout << myname << "ROOT file: " << fullrootfile << endl;
+  pdetgeo->LoadGeometryFile(fullgdmlfile, fullrootfile);
+  m_pgeo = pdetgeo;
+  ntpc();
+  // Add the geometry channel map.
+  if ( useChannels ) {
+    cout << myname << "Adding channel map." << endl;
+    spar = "SortingParameters: {}  # to use default";
+    fhicl::make_ParameterSet(spar, parset);
+    shared_ptr<geo::ChannelMapAlg> pChannelMap;
+    if ( gname.find("dune") != string::npos ) {
+      pChannelMap.reset(new geo::ChannelMapAPAAlg(parset));
+    } else if ( gname.find("lbne") != string::npos ) {
+      pChannelMap.reset(new geo::ChannelMap35OptAlg(parset));
+    }
+    if ( pChannelMap ) {
+      pdetgeo->ApplyChannelMap(pChannelMap);
+      m_haveChannelMap = true;
+    } else {
+      cout << myname << "WARNING: Unknown geometry: " << gname
+           << ". Channel map is not loaded." << endl;
+    }
+  }
 }
 
 //**********************************************************************
@@ -90,6 +141,24 @@ LArProperties* GeoHelper::larProperties() const {
 
 unsigned int GeoHelper::ncryostat() const {
   return m_pgeo->Ncryostats();
+}
+
+//**********************************************************************
+
+unsigned int GeoHelper::ntpc() {
+  if ( m_ntpc == 0 ) {
+    m_ntpc = 0;
+    if ( m_pgeo != nullptr ) {
+      for ( Index icry=0; icry<ncryostat(); ++icry ) m_ntpc += m_pgeo->NTPC(icry);
+    }
+  }
+  return m_ntpc;
+}
+
+//**********************************************************************
+
+unsigned int GeoHelper::ntpc() const {
+  return m_ntpc;
 }
 
 //**********************************************************************

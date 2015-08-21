@@ -34,7 +34,8 @@ LArGeoManager::LArGeoManager() {
 
 //**********************************************************************
 
-LArGeoManager::LArGeoManager(const GeoHelper& gh, bool addTpcs) {
+LArGeoManager::LArGeoManager(const GeoHelper& gh, bool addTpcs, int dbg) {
+  m_dbg = dbg;
   m_pgh = &gh;
   if ( m_pgh->geometry() == nullptr ) return;
   string name = "largeo_" + m_pgh->geometry()->DetectorName();
@@ -56,7 +57,7 @@ LArGeoManager::LArGeoManager(const GeoHelper& gh, bool addTpcs) {
     for ( unsigned int icry=0; icry<ncry; ++icry ) {
       unsigned int ntpc = m_pgh->geometry()->NTPC(icry);
       for ( unsigned int icrytpc=0; icrytpc<ntpc; ++icrytpc ) {
-        addTpc(icry, icrytpc);
+        addTpc(icrytpc, icry);
       }
     }
   }
@@ -81,6 +82,7 @@ addTpc(int itpc, double dx, double dy, double dz, double xc, double yc, double z
 //**********************************************************************
 
 void LArGeoManager::addTpc(int icrytpc, int icry) const {
+  if ( m_dbg ) cout << "Adding icry=" << icry << ", itpc=" << icrytpc << endl;
   if ( m_pgh == nullptr ) return;
   if ( m_pgh->geometry() == nullptr ) return;
   const GeoHelper& gh = *m_pgh;

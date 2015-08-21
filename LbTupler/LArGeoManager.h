@@ -33,7 +33,7 @@ public:
 
   // Ctor from GeoHelper.
   // If addTpcs is true, thena volume is created for each TPC.
-  LArGeoManager(const GeoHelper& gh, bool addTpcs =true);
+  LArGeoManager(const GeoHelper& gh, bool addTpcs =true, int dbg =0);
 
   // Add a TPC volume with the specified index, size and center position.
   void addTpc(int itpc, double dx, double dy, double dz, double xc, double yc, double zc) const;
@@ -50,5 +50,6 @@ private:
   const GeoHelper* m_pgh = nullptr;
   char m_tranparency = 75;
   int m_color = 33;
+  int m_dbg = 0;
 
 };

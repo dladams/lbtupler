@@ -46,6 +46,11 @@ public:
   // Note: DetectorProperties has non-const methods.
   GeoHelper(const geo::GeometryCore* pgeo, bool useChannels, Status dbg =0);
 
+  // Ctor from geometry name, e.g. "dune10kt_v1".
+  // This is for use outside the art framework.
+  // if useChannels is true, then the apprpriate channel map is loaded.
+  GeoHelper(std::string gname, bool useChannels =false, Status dbg =0);
+
   // Return the geometry.
   const geo::GeometryCore* geometry() const { return m_pgeo; }
 
@@ -77,7 +82,8 @@ public:
   Index napa() const { return m_napa; }
 
   // Total number of TPCs.
-  Index ntpc() const { return m_ntpc; }
+  Index ntpc();
+  Index ntpc() const;
 
   // Total number of TPC planes.
   Index ntpp() const { return m_ntpp; }

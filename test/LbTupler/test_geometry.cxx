@@ -8,9 +8,7 @@
 #include "fhiclcpp/ParameterSet.h"
 #include "fhiclcpp/make_ParameterSet.h"
 #include "Geometry/GeometryCore.h"
-#include "Geometry/ChannelMapAlg.h"
-#include "lbne/Geometry/ChannelMap35OptAlg.h"
-#include "lbne/Geometry/ChannelMapAPAAlg.h"
+#include "LbTupler/GeoHelper.h"
 
 #include <string>
 #include <iostream>
@@ -53,6 +51,12 @@ int main(int narg, char** argv) {
   if ( narg > 1 ) {
     gname = argv[1];
   }
+  if ( gname == "-h" || gname == "help" ) {
+    cout << "Usage: " << argv[0] << " [GEONAME]" << endl;
+    return 0;
+  }
+  int dbg = 0;
+  if ( narg > 2 ) dbg = 1;
   // (xref,yref,zref) is a point inside a TPC
   vector<double> xref = {-500.0, 0.0, 0.0, -500.0, 0.0};
   vector<double> yref = {   0.0, 0.0, 0.0,    0.0, 0.0};
@@ -62,10 +66,6 @@ int main(int narg, char** argv) {
   cout << "Checking geometry name: " << gname << endl;
   unsigned int ndet = gnames.size();
   unsigned int idet = 0;
-  if ( gname == "-h" || gname == "help" ) {
-    cout << "Usage: " << argv[0] << " [GEONAME]" << endl;
-    return 0;
-  }
   for ( ; idet<ndet; ++idet ) {
     if ( gnames[idet] == gname ) break;
   }
@@ -77,42 +77,13 @@ SurfaceY: 0
   cout << myname << "Config: \n" << spar << endl;
   fhicl::ParameterSet parset;
   fhicl::make_ParameterSet(spar, parset);
-  geo::GeometryCore* pgeo = new geo::GeometryCore(parset);
-  // Load the geometry.
-  cout << "Loading geometry." << endl;
-  string gdmlfile = gname + ".gdml";
-  string rootfile = gdmlfile;
-  string fullgdmlfile = gdmlfile;
-  string fullrootfile;
-  cet::search_path sp("FW_SEARCH_PATH");
-  if ( ! sp.find_file(rootfile, fullrootfile) ) {
-    cout << myname << "Unable to find the root geometry file: " << rootfile << endl;
-    return 2;
+  // Create the LAr geometry.
+  GeoHelper gh(gname);
+  if ( dbg ) {
+    gh.print();
+    return 0;
   }
-  cout << myname << "GDML file: " << fullgdmlfile << endl;
-  cout << myname << "ROOT file: " << fullrootfile << endl;
-  pgeo->LoadGeometryFile(fullgdmlfile, fullrootfile);
-  // Load the channel map.
-  cout << myname << "Loading channel map." << endl;
-  //string spar2 = "SortingParameters: {}";
-  string spar2 = "SortingParameters: {DetectorVersion: \"" + gname + "\"}";
-  cout << myname << "Config:\n" << spar2 << endl;
-  fhicl::ParameterSet parset2;
-  fhicl::make_ParameterSet(spar2, parset2);
-  bool haveChannels = false;
-  shared_ptr<geo::ChannelMapAlg> pChannelMap;
-  if        ( idet == 0 || idet == 3 ) {
-    pChannelMap.reset(new geo::ChannelMapAPAAlg(parset2));
-  } else if ( idet == 2 || idet == 4 ) {
-    pChannelMap.reset(new geo::ChannelMap35OptAlg(parset2));
-  }
-  if ( pChannelMap ) {
-    cout << myname << "Applying channel map." << endl;
-    pgeo->ApplyChannelMap(pChannelMap);
-    haveChannels = true;
-  } else {
-    cout << myname << "No channel map applied." << endl;
-  }
+  const geo::GeometryCore* pgeo = gh.geometry();
   // Test the geometry.
   cout << myname << "Retrieving basic geometry info" << endl;
   int ncry = pgeo->Ncryostats();
@@ -124,7 +95,7 @@ SurfaceY: 0
   TPCID tid = pgeo->FindTPCAtPosition(pos);
   cout << myname << "Fetching # channels." << endl;
   unsigned int nchan = 0;
-  if ( haveChannels ) {
+  if ( gh.haveChannelMap() ) {
     nchan = pgeo->Nchannels();
   }
   cout << myname << "Fetched # channels." << endl;
